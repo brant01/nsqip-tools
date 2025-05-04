@@ -17,3 +17,6 @@ data/
 
 # logs
 logs/
+
+# data directories
+data/
