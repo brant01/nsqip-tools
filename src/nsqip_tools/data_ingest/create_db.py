@@ -14,18 +14,10 @@ def create_db(
 ) -> None:
     """
     Create a DuckDB database from a directory of TXT files with tab-separated data.
-    All columns are stored as TEXT for maximum compatibility and to avoid lossy conversion.
-
-
-    Args:
-        data_dir (Path): Directory containing raw .txt files.
-        db_path (Optional[Path]): Path for the output DuckDB file.
-                                  Defaults to <data_dir>/<dataset>_data.duckdb
-        table_name (str): Name of the table to create in the DB.
+    All columns are stored as TEXT for maximum compatibility.
     """
     
     setup_logging("create_db")
-    
     logging.info("Starting database creation process.")
 
     if not data_dir.exists():
@@ -83,86 +75,118 @@ def create_db(
                 df = align_df_to_schema(df, all_columns)
                 
                 # insert into DuckDB
-                con.execute(f"INSERT INTO {table_name} SELECT * FROM df", {"df": df})
+                # Register the arrow table as a DuckDB view
+                con.register("temp_df", df.to_arrow())
+
+                # Insert into final table from the temp view
+                con.execute(f'INSERT INTO "{table_name}" SELECT * FROM temp_df')
+
+                # Optionally drop the view to avoid reuse issues
+                con.unregister("temp_df")
+
                 logging.info(f"Inserted {df.shape[0]} rows from {file_path.name}")
                 
             except Exception as e:
                 logging.error(f"Error processing file {file_path.name}: {e}")
                 continue
-    logging.info(f"Finished building DuckDB database at {db_path}")
+
+        # --- Summary logging ---
+        try:
+            total_cols = len(all_columns)
+            total_rows = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+
+            logging.info(f" Final table: {table_name}")
+            logging.info(f"→ Total columns: {total_cols}")
+            logging.info(f"→ Total rows: {total_rows}")
+
+            # Log row count by OPERYR (if it exists)
+            if "OPERYR" in all_columns:
+                result = con.execute(f"""
+                    SELECT OPERYR, COUNT(*) AS n 
+                    FROM "{table_name}" 
+                    GROUP BY OPERYR 
+                    ORDER BY OPERYR
+                """).fetchall()
+                logging.info("→ Row counts by OPERYR:")
+                for year, count in result:
+                    logging.info(f"   {year}: {count}")
+            else:
+                logging.info("→ Column 'OPERYR' not found in table. Skipping yearly breakdown.")
+        except Exception as e:
+            logging.warning(f"Error during final summary logging: {e}")
+
 
 def read_clean_csv(file_path: Path) -> pl.DataFrame:
     """
-    Reads a RSV file and standardizes column names to uppercase. 
-    Handles encoding issues with 'utf8-lossy'
+    Reads a TXT file and standardizes column names to uppercase. 
+    Forces all columns to be read as strings to avoid type inference errors.
 
     Args:
-        file_path (Path): _description_
+        file_path (Path): Path to .txt file
 
     Returns:
-        pl.DataFrame: _description_
+        pl.DataFrame: Cleaned Polars DataFrame
     """
-    
     try:
-        df = (
-            pl.read_csv(
-                file_path,
-                separator="\t",
-                encoding="utf8-lossy",
-                null_values=["", "NULL", "NA", "-99"],
-                infer_schema_length= 10_000,
-            )
+        df = pl.read_csv(
+            file_path,
+            separator="\t",
+            encoding="utf8-lossy",
+            null_values=["", "NULL", "NA", "-99"],
+            infer_schema_length=None,  # full inference if needed
+            dtypes={"*": pl.Utf8},      # <-- force all columns to string
         )
     except Exception as e:
         logging.error(f"Error reading file {file_path}: {e}")
         raise
-    
+
     df.columns = [col.upper() for col in df.columns]
     return df
 
-def get_all_columns(file_paths: list[Path]) -> set[str]:
+
+def get_all_columns(file_paths: list[Path]) -> list[str]:
     """
-    Scans all files and returns the union of all column names (uppercased)
+    Scans all files and returns the union of all column names (uppercased).
 
     Args:
-        file_paths (list[Path]): list of Paths to files
+        file_paths (list[Path]): List of Paths to .txt files
 
     Returns:
-        set[str]: Union of all column names from all files
+        list[str]: Sorted union of all column names
     """
     all_cols: set[str] = set()
-    
+
     for file in file_paths:
         df = pl.scan_csv(
             file,
             separator="\t",
             encoding="utf8-lossy",
             null_values=["", "NULL", "NA", "-99"],
-            infer_schema_length= 10_000,
+            dtypes={"*": pl.Utf8},  # force all string
         )
         schema = df.collect_schema()
         all_cols.update(col.upper() for col in schema.keys())
-        
+
     return sorted(all_cols)
+
 
 def align_df_to_schema(
     df: pl.DataFrame,
-    all_columns: set[str],
+    all_columns: list[str],
 ) -> pl.DataFrame:
     """
     Inserts nulls for missing columns and enforces column order.
 
     Args:
         df (pl.DataFrame): DataFrame to align
-        all_cols (set[str]): all columns from all filse
+        all_columns (list[str]): master column set
 
     Returns:
         pl.DataFrame: Updated DataFrame with aligned columns
     """
-    
     existing = set(df.columns)
     for col in all_columns:
         if col not in existing:
             df = df.with_columns(pl.lit(None).alias(col))
             
-    return df.select(sorted(all_columns))
+    return df.select(all_columns)
