@@ -1,5 +1,5 @@
 def main():
-    print("Hello from nsqip-projects!")
+    print("Hello from nsqip_tools!")
 
 
 if __name__ == "__main__":
