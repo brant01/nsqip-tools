@@ -95,9 +95,9 @@ def create_db(
             total_cols = len(all_columns)
             total_rows = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
 
-            logging.info(f" Final table: {table_name}")
-            logging.info(f"→ Total columns: {total_cols}")
-            logging.info(f"→ Total rows: {total_rows}")
+            logging.info(f"Final table: {table_name}")
+            logging.info(f"Total columns: {total_cols}")
+            logging.info(f"Total rows: {total_rows}")
 
             # Log row count by OPERYR (if it exists)
             if "OPERYR" in all_columns:
@@ -107,11 +107,11 @@ def create_db(
                     GROUP BY OPERYR 
                     ORDER BY OPERYR
                 """).fetchall()
-                logging.info("→ Row counts by OPERYR:")
+                logging.info("Row counts by OPERYR:")
                 for year, count in result:
                     logging.info(f"   {year}: {count}")
             else:
-                logging.info("→ Column 'OPERYR' not found in table. Skipping yearly breakdown.")
+                logging.info("Column 'OPERYR' not found in table. Skipping yearly breakdown.")
         except Exception as e:
             logging.warning(f"Error during final summary logging: {e}")
 
