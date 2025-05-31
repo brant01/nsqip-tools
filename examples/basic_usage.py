@@ -1,5 +1,8 @@
 
-"""Basic usage examples for NSQIP Tools."""
+"""Basic usage examples for NSQIP Tools.
+
+Note: Install the package first with: uv pip install -e .
+"""
 import nsqip_tools
 import polars as pl
 from pathlib import Path

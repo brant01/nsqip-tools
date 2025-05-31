@@ -74,7 +74,9 @@ class NSQIPQuery:
         # Use DuckDB's native SQL to get a LazyFrame
         conn = duckdb.connect(str(self.db_path), read_only=True)
         arrow_table = conn.execute(f"SELECT * FROM {TABLE_NAME}").fetch_arrow_table()
-        self._lazy_frame = pl.from_arrow(arrow_table).lazy()
+        # Convert arrow table to DataFrame, then to LazyFrame
+        df = pl.from_arrow(arrow_table)
+        self._lazy_frame = df.lazy()
         conn.close()
     
     @property
@@ -197,9 +199,15 @@ class NSQIPQuery:
         """
         # First, get the most recent year
         with duckdb.connect(str(self.db_path), read_only=True) as con:
-            max_year = con.execute(
+            result = con.execute(
                 f"SELECT MAX(OPERYR) FROM {TABLE_NAME}"
-            ).fetchone()[0]
+            ).fetchone()
+            
+            if result is None or result[0] is None:
+                # No data in table, return all columns
+                return self
+            
+            max_year = result[0]
         
         # Get data for the most recent year to check nulls
         recent_year_df = self.lazy_frame.filter(
