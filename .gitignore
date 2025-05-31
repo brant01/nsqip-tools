@@ -5,18 +5,39 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
 
 # Virtual environments
 .venv
+venv/
+env/
 
-# data
+# Data files - IMPORTANT: Never commit actual NSQIP data
 data/
+*.duckdb
+*.csv
+*.txt
+*.xlsx
+*.xls
 
-# environment files
+# Environment files
 *.env
+.env.*
 
-# logs
+# Logs
 logs/
+*.log
 
-# data directories
-data/
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter notebooks (removed to prevent data leakage)
+*.ipynb
+.ipynb_checkpoints/

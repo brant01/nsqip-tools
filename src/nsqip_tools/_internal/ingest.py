@@ -4,49 +4,31 @@ from typing import Optional
 import logging
 import polars as pl
 
-from nsqip_tools.utils.logging_utils import setup_logging
-
-
-def create_db(
-    data_dir: Path = Path("data"),
-    db_path: Optional[Path] = None,
-    table_name: str = "all_data_table",
+def create_duckdb_from_text(
+    text_file_dir: Path,
+    db_name: str,
+    table_name: str = "nsqip",
+    dataset_type: str = "adult",
 ) -> None:
     """
     Create a DuckDB database from a directory of TXT files with tab-separated data.
     All columns are stored as TEXT for maximum compatibility.
     """
-    
-    setup_logging("create_db")
     logging.info("Starting database creation process.")
 
-    if not data_dir.exists():
-        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+    if not text_file_dir.exists():
+        raise FileNotFoundError(f"Data directory not found: {text_file_dir}")
 
-    txt_files = sorted(data_dir.glob("*.txt"))
+    txt_files = sorted(text_file_dir.glob("*.txt"))
     if not txt_files:
-        logging.warning(f"No .txt files found in {data_dir}")
+        logging.warning(f"No .txt files found in {text_file_dir}")
         return
 
-    # --- Detect dataset type from file names ---
-    prefixes = {
-        f.name.lower().split("_")[1] for f in txt_files if "_" in f.name.lower()
-    }
+    # Create database path
+    db_path = text_file_dir / db_name
 
-    if len(prefixes) != 1:
-        raise ValueError(f"Inconsistent dataset prefixes found: {prefixes}")
-
-    prefix = prefixes.pop()
-    if prefix not in {"nsqip", "peds"}:
-        raise ValueError(f"Unknown dataset prefix: {prefix}")
-
-    dataset_type = prefix  # Will be 'nsqip' or 'peds'
-
-    if db_path is None:
-        db_path = data_dir / f"{dataset_type}_data.duckdb"
-
-    logging.info(f"Detected dataset type: {dataset_type}")
-    logging.info(f"Found {len(txt_files)} files to process in {data_dir}")
+    logging.info(f"Dataset type: {dataset_type}")
+    logging.info(f"Found {len(txt_files)} files to process in {text_file_dir}")
     logging.info(f"Output database path: {db_path}")
 
     logging.info("Setup complete. Proceeding to file parsing and database construction.")
