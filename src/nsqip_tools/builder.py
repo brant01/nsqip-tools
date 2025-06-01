@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 def build_parquet_dataset(
     data_dir: Union[str, Path],
     output_dir: Optional[Union[str, Path]] = None,
-    dataset_type: Literal["adult", "pediatric"] = "adult",
+    dataset_type: Optional[Literal["adult", "pediatric"]] = None,
     generate_dictionary: bool = True,
     memory_limit: Optional[str] = None,
     verify_case_counts: bool = True,
@@ -45,7 +45,8 @@ def build_parquet_dataset(
         data_dir: Directory containing NSQIP text files (tab-delimited).
         output_dir: Directory for output files. If None, creates a parquet subdirectory 
                    within data_dir (e.g., data_dir/adult_nsqip_parquet/).
-        dataset_type: Type of NSQIP data ("adult" or "pediatric").
+        dataset_type: Type of NSQIP data ("adult" or "pediatric"). If None, 
+                     auto-detects based on file names.
         generate_dictionary: Whether to generate a data dictionary.
         memory_limit: Memory limit for operations (e.g., "4GB", "8GB"). If None,
                      automatically determined based on available system memory.
@@ -63,22 +64,33 @@ def build_parquet_dataset(
         RuntimeError: If building the dataset fails.
         
     Example:
-        >>> # Creates adult_nsqip_parquet/ subdirectory within data directory
+        >>> # Auto-detects dataset type from filenames and creates subdirectory
         >>> result = build_parquet_dataset(
         ...     data_dir="/path/to/nsqip/data",
-        ...     dataset_type="adult",
         ...     generate_dictionary=True
         ... )
         >>> print(f"Dataset created at: {result['parquet_dir']}")
+        
+        >>> # Or specify explicitly
+        >>> result = build_parquet_dataset(
+        ...     data_dir="/path/to/nsqip/data",
+        ...     dataset_type="adult"
+        ... )
     """
+    # Convert paths
+    data_dir = Path(data_dir)
+    
+    # Auto-detect dataset type if not specified
+    if dataset_type is None:
+        detected_type = _detect_dataset_type(data_dir)
+        dataset_type = detected_type  # type: ignore
+        logger.info(f"Auto-detected dataset type: {dataset_type}")
+    
     # Validate inputs
     if dataset_type not in DATASET_TYPES:
         raise ValueError(
             f"Invalid dataset_type '{dataset_type}'. Must be one of: {DATASET_TYPES}"
         )
-    
-    # Convert paths
-    data_dir = Path(data_dir)
     if not data_dir.exists():
         raise ValueError(f"Data directory does not exist: {data_dir}")
     
@@ -218,6 +230,43 @@ def _verify_case_counts(parquet_dir: Path, dataset_type: str) -> None:
         logger.warning("Case count verification completed with mismatches")
     else:
         logger.info("Case count verification passed")
+
+
+def _detect_dataset_type(data_dir: Path) -> str:
+    """Auto-detect dataset type based on file names.
+    
+    Args:
+        data_dir: Directory containing NSQIP text files
+        
+    Returns:
+        Detected dataset type ("adult" or "pediatric")
+        
+    Raises:
+        ValueError: If dataset type cannot be determined
+    """
+    txt_files = list(data_dir.glob("*.txt"))
+    if not txt_files:
+        raise ValueError(f"No .txt files found in {data_dir}")
+    
+    # Check file names for specific patterns
+    for file in txt_files:
+        filename_lower = file.name.lower()
+        
+        # Pediatric files start with 'acs_peds'
+        if filename_lower.startswith('acs_peds'):
+            return "pediatric"
+        
+        # Adult files start with 'acs_nsqip'
+        if filename_lower.startswith('acs_nsqip'):
+            return "adult"
+    
+    # If no clear pattern found, raise error
+    filenames = [f.name for f in txt_files]
+    raise ValueError(
+        f"Could not auto-detect dataset type from filenames: {filenames}. "
+        f"Expected filenames to start with 'acs_peds' (pediatric) or 'acs_nsqip' (adult). "
+        f"Please specify dataset_type explicitly."
+    )
 
 
 def _generate_data_dictionary(parquet_dir: Path, output_dir: Path, dataset_type: str) -> Path:

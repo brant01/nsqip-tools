@@ -7,6 +7,7 @@ It will be deleted before PyPI release.
 """
 import nsqip_tools
 from pathlib import Path
+from typing import Optional
 import sys
 
 
@@ -21,16 +22,20 @@ def test_memory_detection():
     print()
 
 
-def test_dataset_build(data_dir: str, dataset_type: str = "adult"):
+def test_dataset_build(data_dir: str, dataset_type: Optional[str] = None):
     """Test building parquet dataset from real NSQIP data."""
-    print(f"=== Dataset Build Test ({dataset_type}) ===")
+    print(f"=== Dataset Build Test ===")
     data_path = Path(data_dir)
     
     if not data_path.exists():
         print(f"❌ Data directory not found: {data_path}")
         return None
     
-    print(f"Will create parquet dataset in: {data_path}/{dataset_type}_nsqip_parquet/")
+    if dataset_type:
+        print(f"Using specified dataset type: {dataset_type}")
+        print(f"Will create parquet dataset in: {data_path}/{dataset_type}_nsqip_parquet/")
+    else:
+        print("Will auto-detect dataset type from filenames...")
     
     # List files in directory
     txt_files = list(data_path.glob("*.txt"))
@@ -186,7 +191,7 @@ def main():
     if len(sys.argv) > 2:
         dataset_type = sys.argv[2]
     else:
-        dataset_type = input("Enter dataset type (adult/pediatric) [adult]: ").strip() or "adult"
+        dataset_type = input("Enter dataset type (adult/pediatric) [auto-detect]: ").strip() or None
     
     # Test 1: Memory detection
     test_memory_detection()
