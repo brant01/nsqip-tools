@@ -30,6 +30,8 @@ def test_dataset_build(data_dir: str, dataset_type: str = "adult"):
         print(f"❌ Data directory not found: {data_path}")
         return None
     
+    print(f"Will create parquet dataset in: {data_path}/{dataset_type}_nsqip_parquet/")
+    
     # List files in directory
     txt_files = list(data_path.glob("*.txt"))
     print(f"Found {len(txt_files)} .txt files:")

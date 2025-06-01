@@ -11,6 +11,7 @@ from datetime import datetime
 from .constants import (
     DATASET_TYPES,
     EXPECTED_CASE_COUNTS,
+    DATASET_NAME_TEMPLATE,
 )
 from ._internal.ingest import create_parquet_from_text
 from ._internal.transform import apply_transformations
@@ -42,7 +43,8 @@ def build_parquet_dataset(
     
     Args:
         data_dir: Directory containing NSQIP text files (tab-delimited).
-        output_dir: Directory for output files. Defaults to data_dir.
+        output_dir: Directory for output files. If None, creates a parquet subdirectory 
+                   within data_dir (e.g., data_dir/adult_nsqip_parquet/).
         dataset_type: Type of NSQIP data ("adult" or "pediatric").
         generate_dictionary: Whether to generate a data dictionary.
         memory_limit: Memory limit for operations (e.g., "4GB", "8GB"). If None,
@@ -61,8 +63,9 @@ def build_parquet_dataset(
         RuntimeError: If building the dataset fails.
         
     Example:
+        >>> # Creates adult_nsqip_parquet/ subdirectory within data directory
         >>> result = build_parquet_dataset(
-        ...     data_dir="/path/to/nsqip/text/files",
+        ...     data_dir="/path/to/nsqip/data",
         ...     dataset_type="adult",
         ...     generate_dictionary=True
         ... )
@@ -79,14 +82,18 @@ def build_parquet_dataset(
     if not data_dir.exists():
         raise ValueError(f"Data directory does not exist: {data_dir}")
     
+    # Create clean directory structure
     if output_dir is None:
-        output_dir = data_dir
+        # Create parquet subdirectory within data directory
+        dataset_name = DATASET_NAME_TEMPLATE.format(dataset_type=dataset_type)
+        parquet_output_dir = data_dir / dataset_name
     else:
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        parquet_output_dir = Path(output_dir)
     
-    # Set up logging
-    log_path = output_dir / f"build_{dataset_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    parquet_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Set up logging - log file goes with the parquet files
+    log_path = parquet_output_dir / f"build_{dataset_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     
     # Set up file logging
     file_handler = logging.FileHandler(log_path)
@@ -105,7 +112,7 @@ def build_parquet_dataset(
     
     logger.info(f"Starting NSQIP parquet dataset build for {dataset_type} data")
     logger.info(f"Data directory: {data_dir}")
-    logger.info(f"Output directory: {output_dir}")
+    logger.info(f"Output directory: {parquet_output_dir}")
     logger.info(f"Memory limit: {memory_limit}")
     
     try:
@@ -113,7 +120,7 @@ def build_parquet_dataset(
         logger.info("Step 1: Creating parquet files from text files")
         parquet_dir = create_parquet_from_text(
             text_file_dir=data_dir,
-            output_dir=output_dir,
+            output_dir=parquet_output_dir,
             dataset_type=dataset_type,
         )
         
@@ -132,7 +139,7 @@ def build_parquet_dataset(
         
         if generate_dictionary:
             logger.info("Step 4: Generating data dictionary")
-            dict_path = _generate_data_dictionary(parquet_dir, output_dir, dataset_type)
+            dict_path = _generate_data_dictionary(parquet_dir, parquet_output_dir, dataset_type)
             result["dictionary"] = dict_path
         
         logger.info(f"Build complete! Dataset saved to: {parquet_dir}")
