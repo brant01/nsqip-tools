@@ -1,15 +1,16 @@
 # NSQIP Tools
 
-A Python package for working with National Surgical Quality Improvement Program (NSQIP) data. This package provides tools to convert NSQIP text files into an optimized DuckDB database, perform standard data transformations, and query the data efficiently.
+A Python package for working with National Surgical Quality Improvement Program (NSQIP) data. This package provides tools to convert NSQIP text files into optimized parquet datasets, perform standard data transformations, and query the data efficiently using Polars.
 
 ## Features
 
-- **Data Ingestion**: Convert NSQIP tab-delimited text files to DuckDB format
+- **Data Ingestion**: Convert NSQIP tab-delimited text files to parquet format
 - **Automatic Transformations**: Standard data cleaning and derived variables
 - **Data Verification**: Validate case counts against expected values
 - **Efficient Querying**: Filter by CPT codes, diagnosis codes, years, and more
 - **Data Dictionary**: Auto-generate comprehensive data dictionaries in CSV, JSON, and HTML formats
 - **Memory Efficient**: Designed to work on regular computers with limited RAM
+- **Network Drive Compatible**: Works seamlessly on local or network file systems
 - **Type Safe**: Comprehensive type hints throughout
 
 ## Installation
@@ -20,18 +21,18 @@ pip install nsqip-tools
 
 ## Quick Start
 
-### Building a Database
+### Building a Dataset
 
 ```python
 import nsqip_tools
 
-# Build database from NSQIP text files
-result = nsqip_tools.build_duck_db(
+# Build parquet dataset from NSQIP text files
+result = nsqip_tools.build_parquet_dataset(
     data_dir="/path/to/nsqip/files",
     dataset_type="adult"  # or "pediatric"
 )
 
-print(f"Database created at: {result['database']}")
+print(f"Dataset created at: {result['parquet_dir']}")
 print(f"Data dictionary at: {result['dictionary']}")
 ```
 
@@ -39,15 +40,16 @@ print(f"Data dictionary at: {result['dictionary']}")
 
 ```python
 import nsqip_tools
+import polars as pl
 
 # Load and filter data
-df = (nsqip_tools.load_data("adult_data.duckdb")
+df = (nsqip_tools.load_data("/path/to/parquet/dataset")
       .filter_by_cpt(["44970", "44979"])  # Laparoscopic procedures
       .filter_by_year([2020, 2021])
       .collect())
 
 # Chain with Polars operations
-df = (nsqip_tools.load_data("adult_data.duckdb")
+df = (nsqip_tools.load_data("/path/to/parquet/dataset")
       .filter_by_diagnosis(["K80.20"])  # Gallstones
       .lazy_frame  # Access the Polars LazyFrame
       .select(["CASEID", "AGE_AS_INT", "CPT", "OPERYR"])
@@ -59,36 +61,38 @@ df = (nsqip_tools.load_data("adult_data.duckdb")
 
 ## API Reference
 
-### Building Databases
+### Building Datasets
 
-#### `build_duck_db()`
+#### `build_parquet_dataset()`
 
-Build an NSQIP DuckDB database from text files with standard transformations.
+Build an NSQIP parquet dataset from text files with standard transformations.
 
 ```python
-result = nsqip_tools.build_duck_db(
+result = nsqip_tools.build_parquet_dataset(
     data_dir,                    # Path to NSQIP text files
     output_dir=None,            # Output directory (defaults to data_dir)
     dataset_type="adult",       # "adult" or "pediatric"
     generate_dictionary=True,   # Generate data dictionary
-    memory_limit="4GB",         # DuckDB memory limit
-    verify_case_counts=True     # Verify case counts match expected
+    memory_limit="4GB",         # Memory limit for operations
+    verify_case_counts=True,    # Verify case counts match expected
+    apply_transforms=True       # Apply standard transformations
 )
 ```
 
 **Returns:** Dictionary with paths to:
-- `database`: DuckDB database file
+- `parquet_dir`: Parquet dataset directory
 - `dictionary`: Data dictionary CSV file (if generated)
 - `log`: Build log file
+
 
 ### Querying Data
 
 #### `load_data()`
 
-Load NSQIP data from a DuckDB database for querying.
+Load NSQIP data from a parquet dataset for querying.
 
 ```python
-query = nsqip_tools.load_data("path/to/database.duckdb")
+query = nsqip_tools.load_data("/path/to/parquet/dataset")
 ```
 
 #### Filter Methods
@@ -99,18 +103,20 @@ All filter methods return the query object for chaining:
 - **`filter_by_diagnosis(diagnosis_codes)`**: Filter by ICD diagnosis codes  
 - **`filter_by_year(years)`**: Filter by operation years
 - **`filter_active_variables()`**: Keep only variables with data in most recent year
-- **`filter(cpt=None, diagnosis=None, year=None, active_only=False)`**: Apply multiple filters
+- **`select_demographics()`**: Select common demographic variables
+- **`select_outcomes()`**: Select common outcome variables
 
 #### Accessing Results
 
 - **`.lazy_frame`**: Get the Polars LazyFrame for custom operations
 - **`.collect()`**: Execute query and return Polars DataFrame
-- **`.safe_collect()`**: Collect with automatic memory checking
-- **`.estimate_size()`**: Estimate result size before collecting
+- **`.count()`**: Get count of rows without collecting full data
+- **`.sample(n)`**: Get a random sample of n rows
+- **`.describe()`**: Get summary statistics about the query
 
 ## Standard Transformations
 
-The `build_duck_db()` function automatically applies these transformations:
+The `build_parquet_dataset()` function automatically applies these transformations:
 
 1. **Data Type Conversion**: Identifies and converts numeric columns while preserving categorical codes
 2. **Age Processing**: 
@@ -120,7 +126,7 @@ The `build_duck_db()` function automatically applies these transformations:
 3. **CPT Array**: Combines all CPT columns into `ALL_CPT_CODES` array
 4. **Diagnosis Array**: Combines all diagnosis columns into `ALL_DIAGNOSIS_CODES` array
 5. **Race Combination**: Merges `RACE` and `RACE_NEW` into `RACE_COMBINED`
-6. **Work RVU**: Calculates `TOTAL_RVU` from work RVU columns (adult only)
+6. **Work RVU**: Calculates `WORK_RVU_TOTAL` from work RVU columns (adult only)
 7. **Free Flap Indicators**: Derives boolean flags based on CPT codes
 
 ## Data Dictionary
@@ -135,7 +141,7 @@ Generated data dictionaries include:
 
 Available formats:
 - **CSV**: For Excel/spreadsheet users
-- **JSON**: For programmatic access
+- **Excel**: For advanced spreadsheet analysis
 - **HTML**: For easy web viewing
 
 ## Memory Optimization
@@ -143,9 +149,9 @@ Available formats:
 The package is designed for regular computers:
 
 - **Automatic memory detection**: Recommends appropriate memory limits based on available RAM
-- Uses DuckDB's columnar storage and compression
-- Processes data in chunks during ingestion
-- Returns Polars LazyFrames for efficient query planning
+- **Columnar storage**: Uses parquet format for efficient compression and access
+- **Lazy evaluation**: Polars LazyFrames enable efficient query planning
+- **Streaming support**: Can process datasets larger than available memory
 
 ```python
 # Check system memory
@@ -155,10 +161,10 @@ print(f"Available: {mem_info['available']}")
 print(f"Recommended limit: {mem_info['recommended_limit']}")
 
 # Use automatic memory detection (default)
-result = nsqip_tools.build_duck_db(data_dir="/path/to/files")
+result = nsqip_tools.build_parquet_dataset(data_dir="/path/to/files")
 
 # Or specify custom limit
-result = nsqip_tools.build_duck_db(
+result = nsqip_tools.build_parquet_dataset(
     data_dir="/path/to/files",
     memory_limit="8GB"
 )
@@ -170,17 +176,32 @@ The package includes memory-safe collection to prevent out-of-memory errors:
 
 ```python
 # Check size before collecting
-query = nsqip_tools.load_data("adult_data.duckdb").filter_by_year([2021])
-size_info = query.estimate_size()
-print(f"Estimated size: {size_info['estimated_memory_str']}")
-print(f"Safe to collect: {size_info['safe_to_collect']}")
+query = nsqip_tools.load_data("/path/to/parquet/dataset").filter_by_year([2021])
+info = query.describe()
+print(f"Total rows: {info['total_rows']}")
+print(f"Columns: {info['columns']}")
 
-# Use safe_collect() for automatic memory checking
-df = query.safe_collect()  # Raises MemoryError if too large
+# Use streaming for large datasets
+df = query.collect(streaming=True)
 
-# Adjust memory limit or force collection
-df = query.safe_collect(memory_limit_fraction=0.8)  # Use up to 80% of RAM
-df = query.safe_collect(force=True)  # Override safety check
+# Get a sample for exploration
+sample_df = query.sample(n=10000)
+```
+
+## Network Drive Support
+
+The package works seamlessly on network drives and file systems that don't support file locking:
+
+```python
+# Works on network drives, SMB shares, etc.
+result = nsqip_tools.build_parquet_dataset(
+    data_dir="/Volumes/network_drive/nsqip_data",
+    output_dir="/Volumes/network_drive/processed"
+)
+
+# Query from network location
+query = nsqip_tools.load_data("/Volumes/network_drive/processed/adult_nsqip_parquet")
+```
 
 ## Data Requirements
 

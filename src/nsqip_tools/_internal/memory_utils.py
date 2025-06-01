@@ -1,4 +1,4 @@
-"""Memory utilities for optimizing DuckDB performance."""
+"""Memory utilities for optimizing data processing performance."""
 import platform
 import psutil
 from typing import Optional
@@ -39,18 +39,17 @@ def format_bytes(num_bytes: int) -> str:
 
 
 def get_recommended_memory_limit(conservative: bool = True) -> str:
-    """Get recommended DuckDB memory limit based on available RAM.
+    """Get recommended memory limit for data processing based on available RAM.
     
-    DuckDB can use more memory than specified, but this sets a soft limit
-    for its buffer pool. We recommend conservative settings to ensure
-    the system remains responsive.
+    This provides a soft limit for operations to ensure the system remains
+    responsive while processing large datasets.
     
     Args:
         conservative: If True, use more conservative memory allocation.
                      Recommended for systems running other applications.
     
     Returns:
-        Memory limit string suitable for DuckDB (e.g., "4GB").
+        Memory limit string (e.g., "4GB").
     """
     total_memory = get_total_memory()
     available_memory = get_available_memory()
@@ -59,16 +58,17 @@ def get_recommended_memory_limit(conservative: bool = True) -> str:
     base_memory = min(total_memory, available_memory)
     
     if conservative:
-        # Use 40% of available memory or 50% of total, whichever is less
+        # Use 50% of available memory or 60% of total, whichever is less
+        # This is more appropriate for data processing tasks
         recommended = min(
-            int(available_memory * 0.4),
-            int(total_memory * 0.5)
+            int(available_memory * 0.5),
+            int(total_memory * 0.6)
         )
     else:
-        # Use 60% of available memory or 70% of total, whichever is less
+        # Use 70% of available memory or 80% of total, whichever is less
         recommended = min(
-            int(available_memory * 0.6),
-            int(total_memory * 0.7)
+            int(available_memory * 0.7),
+            int(total_memory * 0.8)
         )
     
     # Set minimum and maximum bounds

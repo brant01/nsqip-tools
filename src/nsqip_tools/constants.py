@@ -71,14 +71,11 @@ RACE_FIELD: str = "RACE"
 RACE_NEW_FIELD: str = "RACE_NEW"
 RACE_COMBINED_FIELD: str = "RACE_COMBINED"
 
-# Database file naming convention
-DB_NAME_TEMPLATE: str = "{dataset_type}_data.duckdb"
+# Dataset naming convention
+DATASET_NAME_TEMPLATE: str = "{dataset_type}_nsqip_parquet"
 
 # Supported dataset types
 DATASET_TYPES: Set[str] = {"adult", "pediatric"}
-
-# Table name in DuckDB
-TABLE_NAME: str = "nsqip"
 
 # Array column names created during transformation
 ALL_CPT_CODES_FIELD: str = "ALL_CPT_CODES"

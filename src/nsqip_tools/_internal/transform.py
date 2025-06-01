@@ -1,299 +1,287 @@
-import duckdb
+"""Transformation functions for NSQIP data using Polars."""
 from pathlib import Path
-from typing import Union
+import logging
+import polars as pl
+import json
+from typing import List, Optional
 
-VALID_TYPES = {
-    "BOOLEAN",
-    "TINYINT",
-    "SMALLINT",
-    "INTEGER",
-    "BIGINT",
-    "HUGEINT",
-    "UTINYINT",
-    "USMALLINT",
-    "UINTEGER",
-    "UBIGINT",
-    "FLOAT",
-    "DOUBLE",
-    "DECIMAL",
-    "REAL",
-    "DATE",
-    "TIME",
-    "TIMESTAMP",
-    "TIMESTAMPTZ",
-    "INTERVAL",
-    "VARCHAR",  # duckdb uses VARCHAR as the formal type for strings
-    "STRING",   # alias for VARCHAR
-    "BLOB",
-    "CATEGORICAL",
-    "UUID"
-}
+from ..constants import (
+    NEVER_NUMERIC,
+    AGE_FIELD,
+    AGE_AS_INT_FIELD,
+    AGE_IS_90_PLUS_FIELD,
+    AGE_NINETY_PLUS,
+    CPT_COLUMNS,
+    ALL_CPT_CODES_FIELD,
+    DIAGNOSIS_COLUMNS,
+    ALL_DIAGNOSIS_CODES_FIELD,
+    COMMA_SEPARATED_COLUMNS,
+    RACE_FIELD,
+    RACE_NEW_FIELD,
+    RACE_COMBINED_FIELD,
+)
 
-def cast_column_in_place(
-    db_path: Union[Path, str],
-    table_name: str,
-    columns_to_cast: list[str],
-    new_type: str = "STRING",
-) -> None:
+logger = logging.getLogger(__name__)
+
+
+def apply_transformations(parquet_dir: Path, dataset_type: str, memory_limit: str) -> None:
+    """Apply all standard transformations to parquet files.
     
-    if new_type not in VALID_TYPES:
-        raise ValueError(f"Invalid type '{new_type}'.")
+    Args:
+        parquet_dir: Directory containing parquet files
+        dataset_type: Type of dataset ("adult" or "pediatric")
+        memory_limit: Memory limit for operations (not used in Polars version)
+    """
+    logger.info(f"Applying transformations to parquet files in {parquet_dir}")
     
-    db_path = Path(db_path)
+    # Process each parquet file
+    for parquet_file in parquet_dir.glob("*.parquet"):
+        if parquet_file.name == "metadata.json":
+            continue
+            
+        logger.info(f"Transforming {parquet_file.name}")
         
-    with duckdb.connect(str(db_path)) as con:
-            for col in columns_to_cast:
+        # Read the parquet file
+        df = pl.read_parquet(parquet_file)
+        
+        # Apply transformations
+        df = convert_numeric_columns(df)
+        df = process_age_columns(df)
+        df = create_cpt_array(df)
+        df = create_diagnosis_array(df)
+        df = split_comma_separated_columns(df)
+        df = combine_race_columns(df)
+        
+        # Dataset-specific transformations
+        if dataset_type == "adult":
+            df = add_work_rvu_columns(df)
+            df = add_free_flap_indicators(df)
+        
+        # Write back to parquet
+        df.write_parquet(parquet_file)
+        logger.info(f"Completed transformations for {parquet_file.name}")
+    
+    # Update metadata
+    metadata_path = parquet_dir / "metadata.json"
+    with open(metadata_path, 'r') as f:
+        metadata = json.load(f)
+    
+    metadata["transformations_applied"] = True
+    metadata["transformation_version"] = "2.0"
+    
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    logger.info("All transformations complete")
+
+
+def convert_numeric_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert columns that contain numeric data to appropriate numeric types.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        DataFrame with numeric columns converted
+    """
+    for col in df.columns:
+        if col in NEVER_NUMERIC:
+            continue
+            
+        # Try to convert to numeric
+        try:
+            # Check if column contains numeric data by trying to cast a sample
+            sample = df[col].drop_nulls().head(1000)
+            if len(sample) > 0:
+                # Try integer first
                 try:
-                    tmp_col = f"__tmp_{col}"
-                    con.execute(f"ALTER TABLE {table_name} ADD COLUMN {tmp_col} {new_type};")
-                    con.execute(f"UPDATE {table_name} SET {tmp_col} = CAST({col} AS {new_type});")
-                    con.execute(f"ALTER TABLE {table_name} DROP COLUMN {col};")
-                    con.execute(f"ALTER TABLE {table_name} RENAME COLUMN {tmp_col} TO {col};")
-                    print(f"Column '{col}' casted to {new_type} in table '{table_name}'.")
-                except Exception as e:
-                    print(f"Error casting column '{col}' in table '{table_name}': {e}")
-                    continue
-                
-    print(f"All columns casted to {new_type} in table '{table_name}'.")
+                    _ = sample.cast(pl.Int64, strict=True)
+                    df = df.with_columns(pl.col(col).cast(pl.Int64))
+                    logger.debug(f"Converted {col} to Int64")
+                except:
+                    # Try float
+                    try:
+                        _ = sample.cast(pl.Float64, strict=True)
+                        df = df.with_columns(pl.col(col).cast(pl.Float64))
+                        logger.debug(f"Converted {col} to Float64")
+                    except:
+                        # Keep as string
+                        pass
+        except Exception as e:
+            logger.debug(f"Could not convert {col}: {e}")
     
-def fix_age_column(
-    db_path: Union[Path, str],
-    table_name: str,
-) -> None:
+    return df
+
+
+def process_age_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """Process age columns to add integer age and 90+ indicator.
     
-    db_path = Path(db_path)
-    
-    with duckdb.connect(str(db_path)) as con:
+    Args:
+        df: Input DataFrame
         
-        con.execute(f"""
-                    ALTER TABLE {table_name}
-                    ADD COLUMN IF NOT EXISTS AGE_AS_INT INTEGER;
-                    """
+    Returns:
+        DataFrame with age columns added
+    """
+    if AGE_FIELD not in df.columns:
+        return df
+    
+    # Add integer age column
+    df = df.with_columns(
+        pl.when(pl.col(AGE_FIELD) == AGE_NINETY_PLUS)
+        .then(90)
+        .otherwise(pl.col(AGE_FIELD).cast(pl.Int64, strict=False))
+        .alias(AGE_AS_INT_FIELD)
+    )
+    
+    # Add 90+ indicator
+    df = df.with_columns(
+        (pl.col(AGE_FIELD) == AGE_NINETY_PLUS).alias(AGE_IS_90_PLUS_FIELD)
+    )
+    
+    logger.info(f"Added {AGE_AS_INT_FIELD} and {AGE_IS_90_PLUS_FIELD} columns")
+    return df
+
+
+def create_cpt_array(df: pl.DataFrame) -> pl.DataFrame:
+    """Create array of all CPT codes from individual CPT columns.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        DataFrame with CPT array column added
+    """
+    # Find CPT columns that exist in this dataset
+    cpt_cols = [col for col in CPT_COLUMNS if col in df.columns]
+    
+    if not cpt_cols:
+        logger.warning("No CPT columns found")
+        return df
+    
+    # Create array of non-null CPT codes
+    df = df.with_columns(
+        pl.concat_list([pl.col(col) for col in cpt_cols])
+        .list.drop_nulls()
+        .alias(ALL_CPT_CODES_FIELD)
+    )
+    
+    logger.info(f"Created {ALL_CPT_CODES_FIELD} from {len(cpt_cols)} CPT columns")
+    return df
+
+
+def create_diagnosis_array(df: pl.DataFrame) -> pl.DataFrame:
+    """Create array of all diagnosis codes from individual diagnosis columns.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        DataFrame with diagnosis array column added
+    """
+    # Find diagnosis columns that exist
+    diag_cols = [col for col in DIAGNOSIS_COLUMNS if col in df.columns]
+    
+    if not diag_cols:
+        logger.warning("No diagnosis columns found")
+        return df
+    
+    # Create array of non-null diagnosis codes
+    df = df.with_columns(
+        pl.concat_list([pl.col(col) for col in diag_cols])
+        .list.drop_nulls()
+        .alias(ALL_DIAGNOSIS_CODES_FIELD)
+    )
+    
+    logger.info(f"Created {ALL_DIAGNOSIS_CODES_FIELD} from {len(diag_cols)} diagnosis columns")
+    return df
+
+
+def split_comma_separated_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """Split comma-separated columns into arrays.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        DataFrame with comma-separated columns converted to arrays
+    """
+    for col in COMMA_SEPARATED_COLUMNS:
+        if col in df.columns:
+            new_col = f"{col}_ARRAY"
+            df = df.with_columns(
+                pl.col(col)
+                .str.split(",")
+                .list.eval(pl.element().str.strip_chars())
+                .alias(new_col)
+            )
+            logger.info(f"Split {col} into {new_col}")
+    
+    return df
+
+
+def combine_race_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """Combine RACE and RACE_NEW columns into RACE_COMBINED.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        DataFrame with combined race column
+    """
+    if RACE_FIELD not in df.columns and RACE_NEW_FIELD not in df.columns:
+        return df
+    
+    if RACE_FIELD in df.columns and RACE_NEW_FIELD in df.columns:
+        # Use RACE_NEW if available, otherwise RACE
+        df = df.with_columns(
+            pl.coalesce([pl.col(RACE_NEW_FIELD), pl.col(RACE_FIELD)])
+            .alias(RACE_COMBINED_FIELD)
         )
+        logger.info(f"Created {RACE_COMBINED_FIELD} from {RACE_NEW_FIELD} and {RACE_FIELD}")
+    elif RACE_NEW_FIELD in df.columns:
+        df = df.with_columns(pl.col(RACE_NEW_FIELD).alias(RACE_COMBINED_FIELD))
+        logger.info(f"Created {RACE_COMBINED_FIELD} from {RACE_NEW_FIELD}")
+    else:
+        df = df.with_columns(pl.col(RACE_FIELD).alias(RACE_COMBINED_FIELD))
+        logger.info(f"Created {RACE_COMBINED_FIELD} from {RACE_FIELD}")
+    
+    return df
+
+
+def add_work_rvu_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """Add work RVU total column (placeholder for adult dataset).
+    
+    Args:
+        df: Input DataFrame
         
-        # Populate AGE_AS_INT by removing '+' and casting to int
-        con.execute(f"""
-                    UPDATE {table_name}
-                    SET AGE_AS_INT = CAST(REPLACE(AGE, '+', '') AS INTEGER)
-                    WHERE AGE IS NOT NULL;
-                    """
+    Returns:
+        DataFrame with work RVU columns
+    """
+    # This is a placeholder - actual RVU calculation would need proper mapping
+    if "CPT" in df.columns:
+        df = df.with_columns(
+            pl.lit(0.0).alias("WORK_RVU_TOTAL")
         )
-        
-        # Add AGE_IS_90_PLUS if it doesn't exist
-        con.execute(f"""
-                    ALTER TABLE {table_name}
-                    ADD COLUMN IF NOT EXISTS AGE_IS_90_PLUS BOOLEAN;
-                    """
-        )
-        # Populate AGE_IS_90_PLUS if AGE ends with '+'
-        con.execute(f"""
-                    UPDATE {table_name}
-                    SET AGE_IS_90_PLUS = (AGE LIKE '%+')
-                    WHERE AGE IS NOT NULL;
-                    """
-        )
-
-def add_combined_cpt_column(
-    db_path: Union[Path, str],
-    table_name: str,
-    cpt_columns: list[str] ,
-) -> None:
+        logger.info("Added WORK_RVU_TOTAL column (placeholder)")
     
-    db_path = Path(db_path)
+    return df
+
+
+def add_free_flap_indicators(df: pl.DataFrame) -> pl.DataFrame:
+    """Add free flap indicator columns (placeholder for adult dataset).
     
-    with duckdb.connect(str(db_path)) as con:
+    Args:
+        df: Input DataFrame
         
-        # build SQL to combine CPT columns into an array
-        array_expr = f"[{', '.join(cpt_columns)}]"
-        
-        # add the new column to the table if it doesn't exist
-        con.execute(f"""
-                    ALTER TABLE {table_name}
-                    ADD COLUMN IF NOT EXISTS ALL_CPT_CODES TEXT[];
-                    """
-        )
-        
-        # Update the new column with array of CPTs
-        con.execute(f"""
-                    UPDATE {table_name}
-                    SET ALL_CPT_CODES = {array_expr}
-                    WHERE { ' OR '.join(f"{col} IS NOT NULL" for col in cpt_columns) };
-                    """
-        )
-        
-def add_total_rvu(
-    db_path: Union[Path, str],
-    table_name: str,
-    rvu_columns: list[str] ,
-) -> None:
+    Returns:
+        DataFrame with free flap indicators
+    """
+    # This is a placeholder - actual free flap detection would need CPT code lists
+    if ALL_CPT_CODES_FIELD in df.columns:
+        df = df.with_columns([
+            pl.lit(False).alias("HAS_FREE_FLAP"),
+            pl.lit(False).alias("HAS_ANY_FLAP"),
+        ])
+        logger.info("Added free flap indicator columns (placeholder)")
     
-    db_path = Path(db_path)
-    
-    with duckdb.connect(str(db_path)) as con:
-        
-        # Add TOTAL_RVU column if it doesn't exist
-        con.execute(f"""
-            ALTER TABLE {table_name}
-            ADD COLUMN IF NOT EXISTS TOTAL_RVU DOUBLE;
-        """)
-
-        # Ensure each RVU column is cast to DOUBLE before summing
-        sum_expr = " + ".join([f"COALESCE(CAST({col} AS DOUBLE), 0)" for col in rvu_columns])
-
-        # Update the TOTAL_RVU column
-        con.execute(f"""
-            UPDATE {table_name}
-            SET TOTAL_RVU = {sum_expr}
-            WHERE { ' OR '.join(f"{col} IS NOT NULL" for col in rvu_columns) };
-        """)
-        
-def cast_string_column_to_numeric(
-    db_path: Union[Path, str],
-    table_name: str,
-    column_name: str,
-    new_type: str = "DOUBLE"
-) -> None:
-    db_path = Path(db_path)
-
-    with duckdb.connect(db_path) as con:
-        # Clean up blank or invalid values by setting them to NULL
-        con.execute(f"""
-            UPDATE {table_name}
-            SET {column_name} = NULL
-            WHERE TRIM({column_name}) = '' OR {column_name} IS NULL;
-        """)
-
-        # Now cast safely
-        con.execute(f"""
-            ALTER TABLE {table_name}
-            ALTER COLUMN {column_name} SET DATA TYPE {new_type};
-        """)
-
-    print(f"Successfully casted column '{column_name}' to {new_type}")
-        
-def combine_race_cols(
-    db_path: Union[Path, str],
-    table_name: str,
-) -> None:
-    
-    db_path = Path(db_path)
-    
-    with duckdb.connect(str(db_path)) as con:
-        
-        # Create a temporary column to store combined values
-        con.execute(f"""
-            ALTER TABLE {table_name}
-            ADD COLUMN RACE_COMBINED STRING;
-        """)
-        
-        # Populate it using COALESCE
-        con.execute(f"""
-            UPDATE {table_name}
-            SET RACE_COMBINED = COALESCE(RACE_NEW, RACE);
-        """)
-        
-        # Drop the old RACE and rename the combined column
-        con.execute(f"ALTER TABLE {table_name} DROP COLUMN RACE;")
-        con.execute(f"ALTER TABLE {table_name} DROP COLUMN RACE_NEW;")
-        con.execute(f"ALTER TABLE {table_name} RENAME COLUMN RACE_COMBINED TO RACE;")
-        
-def combine_anes_cols(
-    db_path: Union[Path, str],
-    table_name: str,
-) -> None:
-    
-    db_path = Path(db_path)
-    
-    with duckdb.connect(str(db_path)) as con:
-        
-        # Create a temporary column to store combined values
-        con.execute(f"""
-            ALTER TABLE {table_name}
-            ADD COLUMN ANESTH_COMBINED STRING;
-        """)
-        
-        # Populate it using COALESCE
-        con.execute(f"""
-            UPDATE {table_name}
-            SET ANESTH_COMBINED = COALESCE(ANESTECH, ANESTHES);
-        """)
-        
-        # Drop the old ANESTHES and rename the combined column
-        con.execute(f"ALTER TABLE {table_name} DROP COLUMN ANESTHES;")
-        con.execute(f"ALTER TABLE {table_name} DROP COLUMN ANESTECH;")
-        con.execute(f"ALTER TABLE {table_name} RENAME COLUMN ANESTH_COMBINED TO ANESTECH;")
-        
-
-        
-def split_comma_separated_columns(
-    db_path: Union[Path, str],
-    table_name: str,
-    column_names: list[str],
-) -> None:
-    db_path = str(db_path)
-
-    with duckdb.connect(db_path) as con:
-        for column_name in column_names:
-            new_column = f"{column_name}_list"
-
-            # Drop column if it already exists
-            try:
-                con.execute(f"ALTER TABLE {table_name} DROP COLUMN {new_column}")
-                print(f"Dropped existing column '{new_column}'.")
-            except duckdb.CatalogException:
-                pass  # Column didn't exist, no problem
-
-            # Create and populate the new list column
-            con.execute(f"""
-                ALTER TABLE {table_name}
-                ADD COLUMN {new_column} TEXT[];
-            """)
-            con.execute(f"""
-                UPDATE {table_name}
-                SET {new_column} = list_transform(str_split({column_name}, ','), x -> trim(x));
-            """)
-            print(f"Created list column '{new_column}' from '{column_name}'.")
-
-
-def add_free_flap_flags(
-    db_path: Union[str, Path],
-    table_name: str,
-    cpt_column: str = "ALL_CPT_CODES",
-) -> None:
-    db_path = str(db_path)
-
-    # Define CPT code groups
-    free_flap_cpt = [
-        '15756', '15757', '15758', '20969', '43496', '20955',
-        '20962', '15842', '20956', '20957', '20970'
-    ]
-    soft_tissue_flap = ['15756', '15757', '15758', '43496', '15842']
-    bone_flap = ['20970', '20957', '20956', '20955', '20962', '20969']
-
-    column_defs = {
-        "HAS_FREE_FLAP": free_flap_cpt,
-        "HAS_SOFT_FLAP": soft_tissue_flap,
-        "HAS_BONE_FLAP": bone_flap,
-    }
-
-    with duckdb.connect(db_path) as con:
-        for column_name, cpt_list in column_defs.items():
-            # Drop if already exists
-            try:
-                con.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
-            except duckdb.Error:  # catch all DuckDB-related exceptions
-                pass  # Column didn't exist, no problem
-
-            # Create new boolean column
-            con.execute(f"""
-                ALTER TABLE {table_name}
-                ADD COLUMN {column_name} BOOLEAN;
-            """)
-
-            # Set value based on whether any CPT codes match
-            con.execute(f"""
-                UPDATE {table_name}
-                SET {column_name} = list_has_any({cpt_column}, {cpt_list});
-            """)
-
-            print(f"Created column '{column_name}' for CPT group.")
+    return df

@@ -1,101 +1,97 @@
-import duckdb
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import logging
 import polars as pl
+from datetime import datetime
+import json
 
-def create_duckdb_from_text(
+
+def create_parquet_from_text(
     text_file_dir: Path,
-    db_name: str,
-    table_name: str = "nsqip",
+    output_dir: Optional[Path] = None,
     dataset_type: str = "adult",
-) -> None:
+) -> Path:
     """
-    Create a DuckDB database from a directory of TXT files with tab-separated data.
-    All columns are stored as TEXT for maximum compatibility.
+    Create parquet files from a directory of TXT files with tab-separated data.
+    
+    Args:
+        text_file_dir: Directory containing NSQIP text files
+        output_dir: Directory for output files. Defaults to text_file_dir
+        dataset_type: Type of dataset ("adult" or "pediatric")
+        
+    Returns:
+        Path to the parquet directory
     """
-    logging.info("Starting database creation process.")
-
+    logging.info("Starting parquet creation process.")
+    
     if not text_file_dir.exists():
         raise FileNotFoundError(f"Data directory not found: {text_file_dir}")
-
+    
     txt_files = sorted(text_file_dir.glob("*.txt"))
     if not txt_files:
         logging.warning(f"No .txt files found in {text_file_dir}")
-        return
-
-    # Create database path
-    db_path = text_file_dir / db_name
-
+        raise ValueError(f"No .txt files found in {text_file_dir}")
+    
+    # Create output directory
+    if output_dir is None:
+        output_dir = text_file_dir
+    
+    # Create parquet directory
+    parquet_dir = output_dir / f"{dataset_type}_nsqip_parquet"
+    parquet_dir.mkdir(exist_ok=True)
+    
     logging.info(f"Dataset type: {dataset_type}")
     logging.info(f"Found {len(txt_files)} files to process in {text_file_dir}")
-    logging.info(f"Output database path: {db_path}")
-
-    logging.info("Setup complete. Proceeding to file parsing and database construction.")
+    logging.info(f"Output parquet directory: {parquet_dir}")
     
-    # --- Collect master schema from all files --- 
+    # Get all columns from all files first
     all_columns = get_all_columns(txt_files)
     logging.info(f"Unified column set has {len(all_columns)} columns.")
     
-    # --- Connect and create table ---
-    with duckdb.connect(db_path) as con:
-        logging.info(f"Connected to DuckDB at {db_path}")
+    # Process each file
+    successful_files = []
+    for i, file_path in enumerate(txt_files):
+        logging.info(f"[{i+1}/{len(txt_files)}] Processing {file_path.name}")
         
-        # --- Create table with all columns as TEXT ---
-        col_defs = ",\n".join(f'"{col}" TEXT' for col in all_columns)
-        con.execute(f'DROP TABLE IF EXISTS "{table_name}";')
-        logging.info(f"Dropping existing table {table_name} if it exists.")
-        create_stmt = f'CREATE TABLE "{table_name}" (\n{col_defs}\n);'
-        con.execute(create_stmt)
-        logging.info(f"Created table {table_name} with {len(all_columns)} columns.")
-        
-        for i, file_path in enumerate(txt_files):
-            logging.info(f"[{i+1}/{len(txt_files)}] Processing {file_path.name}")
-            
-            try:
-                df = read_clean_csv(file_path)
-                df = align_df_to_schema(df, all_columns)
-                
-                # insert into DuckDB
-                # Register the arrow table as a DuckDB view
-                con.register("temp_df", df.to_arrow())
-
-                # Insert into final table from the temp view
-                con.execute(f'INSERT INTO "{table_name}" SELECT * FROM temp_df')
-
-                # Optionally drop the view to avoid reuse issues
-                con.unregister("temp_df")
-
-                logging.info(f"Inserted {df.shape[0]} rows from {file_path.name}")
-                
-            except Exception as e:
-                logging.error(f"Error processing file {file_path.name}: {e}")
-                continue
-
-        # --- Summary logging ---
         try:
-            total_cols = len(all_columns)
-            total_rows = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
-
-            logging.info(f"Final table: {table_name}")
-            logging.info(f"Total columns: {total_cols}")
-            logging.info(f"Total rows: {total_rows}")
-
-            # Log row count by OPERYR (if it exists)
-            if "OPERYR" in all_columns:
-                result = con.execute(f"""
-                    SELECT OPERYR, COUNT(*) AS n 
-                    FROM "{table_name}" 
-                    GROUP BY OPERYR 
-                    ORDER BY OPERYR
-                """).fetchall()
-                logging.info("Row counts by OPERYR:")
-                for year, count in result:
-                    logging.info(f"   {year}: {count}")
+            df = read_clean_csv(file_path)
+            df = align_df_to_schema(df, all_columns)
+            
+            # Write to parquet with year suffix if OPERYR exists
+            if "OPERYR" in df.columns:
+                year = df["OPERYR"].unique()[0]
+                parquet_path = parquet_dir / f"{dataset_type}_{year}.parquet"
             else:
-                logging.info("Column 'OPERYR' not found in table. Skipping yearly breakdown.")
+                parquet_path = parquet_dir / f"{file_path.stem}.parquet"
+            
+            df.write_parquet(parquet_path)
+            successful_files.append(parquet_path.name)
+            
+            logging.info(f"Wrote {df.shape[0]} rows to {parquet_path.name}")
+            
         except Exception as e:
-            logging.warning(f"Error during final summary logging: {e}")
+            logging.error(f"Error processing file {file_path.name}: {e}")
+            continue
+    
+    # Create metadata file
+    metadata = {
+        "format": "parquet",
+        "dataset_type": dataset_type,
+        "created": str(datetime.now()),
+        "columns": all_columns,
+        "files": successful_files,
+        "total_files": len(successful_files),
+        "source_directory": str(text_file_dir),
+    }
+    
+    metadata_path = parquet_dir / "metadata.json"
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    logging.info(f"Created metadata file: {metadata_path}")
+    logging.info(f"Parquet dataset complete. Processed {len(successful_files)} files.")
+    
+    return parquet_dir
 
 
 def read_clean_csv(file_path: Path) -> pl.DataFrame:
@@ -104,7 +100,7 @@ def read_clean_csv(file_path: Path) -> pl.DataFrame:
     Forces all columns to be read as strings to avoid type inference errors.
 
     Args:
-        file_path (Path): Path to .txt file
+        file_path: Path to .txt file
 
     Returns:
         pl.DataFrame: Cleaned Polars DataFrame
@@ -115,60 +111,71 @@ def read_clean_csv(file_path: Path) -> pl.DataFrame:
             separator="\t",
             encoding="utf8-lossy",
             null_values=["", "NULL", "NA", "-99"],
-            infer_schema_length=None,  # full inference if needed
-            dtypes={"*": pl.Utf8},      # <-- force all columns to string
+            infer_schema_length=0,  # Don't infer, treat all as string
         )
     except Exception as e:
         logging.error(f"Error reading file {file_path}: {e}")
         raise
 
-    df.columns = [col.upper() for col in df.columns]
+    # Uppercase column names
+    df = df.rename({col: col.upper() for col in df.columns})
     return df
 
 
-def get_all_columns(file_paths: list[Path]) -> list[str]:
+def get_all_columns(file_paths: List[Path]) -> List[str]:
     """
     Scans all files and returns the union of all column names (uppercased).
 
     Args:
-        file_paths (list[Path]): List of Paths to .txt files
+        file_paths: List of paths to scan
 
     Returns:
-        list[str]: Sorted union of all column names
+        List of unique column names in sorted order
     """
-    all_cols: set[str] = set()
+    all_cols = set()
 
     for file in file_paths:
+        # Use scan_csv for memory efficiency
         df = pl.scan_csv(
             file,
             separator="\t",
             encoding="utf8-lossy",
             null_values=["", "NULL", "NA", "-99"],
-            dtypes={"*": pl.Utf8},  # force all string
+            infer_schema_length=0,  # Don't infer types
         )
         schema = df.collect_schema()
-        all_cols.update(col.upper() for col in schema.keys())
+        all_cols.update(col.upper() for col in schema.names())
 
     return sorted(all_cols)
 
 
 def align_df_to_schema(
     df: pl.DataFrame,
-    all_columns: list[str],
+    all_columns: List[str],
 ) -> pl.DataFrame:
     """
-    Inserts nulls for missing columns and enforces column order.
+    Aligns a DataFrame to match the master schema by adding missing columns.
 
     Args:
-        df (pl.DataFrame): DataFrame to align
-        all_columns (list[str]): master column set
+        df: DataFrame to align
+        all_columns: Master list of all columns
 
     Returns:
-        pl.DataFrame: Updated DataFrame with aligned columns
+        DataFrame with all columns, missing ones filled with null
     """
-    existing = set(df.columns)
-    for col in all_columns:
-        if col not in existing:
-            df = df.with_columns(pl.lit(None).alias(col))
-            
-    return df.select(all_columns)
+    # Get current columns (already uppercase)
+    current_cols = set(df.columns)
+    
+    # Find missing columns
+    missing_cols = [col for col in all_columns if col not in current_cols]
+    
+    # Add missing columns as null
+    if missing_cols:
+        df = df.with_columns([
+            pl.lit(None).alias(col) for col in missing_cols
+        ])
+    
+    # Reorder to match schema
+    df = df.select(all_columns)
+    
+    return df

@@ -5,26 +5,26 @@ from unittest.mock import Mock, patch
 import nsqip_tools
 
 
-def test_build_duck_db_validates_inputs(tmp_path):
-    """Test that build_duck_db validates inputs correctly."""
+def test_build_parquet_dataset_validates_inputs(tmp_path):
+    """Test that build_parquet_dataset validates inputs correctly."""
     # Test invalid dataset type
     with pytest.raises(ValueError, match="Invalid dataset_type"):
-        nsqip_tools.build_duck_db(
+        nsqip_tools.build_parquet_dataset(
             data_dir=tmp_path,
-            dataset_type="invalid"
+            dataset_type="invalid"  # type: ignore
         )
     
     # Test non-existent directory
     fake_path = tmp_path / "does_not_exist"
     with pytest.raises(ValueError, match="does not exist"):
-        nsqip_tools.build_duck_db(
+        nsqip_tools.build_parquet_dataset(
             data_dir=fake_path,
             dataset_type="adult"
         )
 
 
-def test_build_duck_db_creates_output_dir(tmp_path):
-    """Test that build_duck_db creates output directory if needed."""
+def test_build_parquet_dataset_creates_output_dir(tmp_path):
+    """Test that build_parquet_dataset creates output directory if needed."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     
@@ -33,11 +33,11 @@ def test_build_duck_db_creates_output_dir(tmp_path):
     
     output_dir = tmp_path / "output"
     
-    # Mock the actual database creation to avoid needing real data
-    with patch('nsqip_tools.builder.create_duckdb_from_text'):
-        with patch('nsqip_tools.builder._apply_transformations'):
+    # Mock the actual parquet creation to avoid needing real data
+    with patch('nsqip_tools.builder.create_parquet_from_text'):
+        with patch('nsqip_tools.builder.apply_transformations'):
             with patch('nsqip_tools.builder._verify_case_counts'):
-                result = nsqip_tools.build_duck_db(
+                result = nsqip_tools.build_parquet_dataset(
                     data_dir=data_dir,
                     output_dir=output_dir,
                     dataset_type="adult",

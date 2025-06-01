@@ -1,42 +1,19 @@
-"""Main API for building NSQIP DuckDB databases.
+"""Main API for building NSQIP parquet datasets.
 
 This module provides the high-level interface for converting NSQIP text files
-into optimized DuckDB databases with standard transformations.
+into optimized parquet datasets with standard transformations.
 """
 import logging
 from pathlib import Path
-from typing import Union, Optional, Literal, Dict, Any
+from typing import Union, Optional, Literal, Dict
 from datetime import datetime
-import duckdb
 
 from .constants import (
     DATASET_TYPES,
-    DB_NAME_TEMPLATE,
-    TABLE_NAME,
-    NEVER_NUMERIC,
-    AGE_FIELD,
-    AGE_AS_INT_FIELD,
-    AGE_IS_90_PLUS_FIELD,
-    AGE_NINETY_PLUS,
-    CPT_COLUMNS,
-    ALL_CPT_CODES_FIELD,
-    DIAGNOSIS_COLUMNS,
-    ALL_DIAGNOSIS_CODES_FIELD,
-    COMMA_SEPARATED_COLUMNS,
-    RACE_FIELD,
-    RACE_NEW_FIELD,
-    RACE_COMBINED_FIELD,
     EXPECTED_CASE_COUNTS,
 )
-from ._internal.ingest import create_duckdb_from_text
-from ._internal.transform import (
-    cast_column_in_place,
-    fix_age_column as handle_age_column,
-    add_combined_cpt_column as create_cpt_array_column,
-    split_comma_separated_columns,
-    add_total_rvu as calculate_work_rvu,
-    add_free_flap_flags as derive_free_flap_columns,
-)
+from ._internal.ingest import create_parquet_from_text
+from ._internal.transform import apply_transformations
 from .data_dictionary import DataDictionaryGenerator
 from ._internal.memory_utils import get_recommended_memory_limit, get_memory_info
 
@@ -48,15 +25,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def build_duck_db(
+def build_parquet_dataset(
     data_dir: Union[str, Path],
     output_dir: Optional[Union[str, Path]] = None,
     dataset_type: Literal["adult", "pediatric"] = "adult",
     generate_dictionary: bool = True,
     memory_limit: Optional[str] = None,
     verify_case_counts: bool = True,
+    apply_transforms: bool = True,
 ) -> Dict[str, Path]:
-    """Build an NSQIP DuckDB database from text files with standard transformations.
+    """Build an NSQIP parquet dataset from text files with standard transformations.
     
     This function performs the complete pipeline of ingesting NSQIP text files,
     applying standard transformations, and optionally generating a data dictionary.
@@ -67,57 +45,47 @@ def build_duck_db(
         output_dir: Directory for output files. Defaults to data_dir.
         dataset_type: Type of NSQIP data ("adult" or "pediatric").
         generate_dictionary: Whether to generate a data dictionary.
-        memory_limit: DuckDB memory limit (e.g., "4GB", "8GB"). If None, automatically
-                     determined based on available system memory.
+        memory_limit: Memory limit for operations (e.g., "4GB", "8GB"). If None,
+                     automatically determined based on available system memory.
         verify_case_counts: Whether to verify case counts match expected values.
+        apply_transforms: Whether to apply standard transformations.
         
     Returns:
         Dictionary with paths to generated files:
-            - "database": Path to the DuckDB database
+            - "parquet_dir": Path to the parquet directory
             - "dictionary": Path to data dictionary (if generated)
             - "log": Path to the log file
             
     Raises:
-        ValueError: If dataset_type is not supported or data_dir doesn't exist.
-        RuntimeError: If database creation or transformation fails.
-        Warning: If case counts don't match expected values (only if verify_case_counts=True).
+        ValueError: If dataset_type is not supported or no text files found.
+        RuntimeError: If building the dataset fails.
         
-    Examples:
-        >>> # Basic usage
-        >>> result = build_duck_db(
-        ...     data_dir="/path/to/nsqip/files",
-        ...     dataset_type="adult"
+    Example:
+        >>> result = build_parquet_dataset(
+        ...     data_dir="/path/to/nsqip/text/files",
+        ...     dataset_type="adult",
+        ...     generate_dictionary=True
         ... )
-        
-        >>> # With custom output and memory settings
-        >>> result = build_duck_db(
-        ...     data_dir="/path/to/nsqip/files",
-        ...     output_dir="/path/to/output",
-        ...     dataset_type="pediatric",
-        ...     memory_limit="8GB"
-        ... )
+        >>> print(f"Dataset created at: {result['parquet_dir']}")
     """
     # Validate inputs
+    if dataset_type not in DATASET_TYPES:
+        raise ValueError(
+            f"Invalid dataset_type '{dataset_type}'. Must be one of: {DATASET_TYPES}"
+        )
+    
+    # Convert paths
     data_dir = Path(data_dir)
     if not data_dir.exists():
         raise ValueError(f"Data directory does not exist: {data_dir}")
     
-    if dataset_type not in DATASET_TYPES:
-        raise ValueError(
-            f"Invalid dataset_type '{dataset_type}'. "
-            f"Must be one of: {', '.join(DATASET_TYPES)}"
-        )
-    
-    # Set output directory
     if output_dir is None:
         output_dir = data_dir
     else:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Define output files
-    db_filename = DB_NAME_TEMPLATE.format(dataset_type=dataset_type)
-    db_path = output_dir / db_filename
+    # Set up logging
     log_path = output_dir / f"build_{dataset_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     
     # Set up file logging
@@ -135,276 +103,148 @@ def build_duck_db(
         logger.info(f"System memory: {mem_info['total']} total, {mem_info['available']} available")
         logger.info(f"Auto-detected memory limit: {memory_limit}")
     
-    logger.info(f"Starting NSQIP database build for {dataset_type} data")
+    logger.info(f"Starting NSQIP parquet dataset build for {dataset_type} data")
     logger.info(f"Data directory: {data_dir}")
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Memory limit: {memory_limit}")
     
     try:
-        # Step 1: Create database from text files
-        logger.info("Step 1: Creating database from text files")
-        create_duckdb_from_text(
+        # Step 1: Create parquet files from text files
+        logger.info("Step 1: Creating parquet files from text files")
+        parquet_dir = create_parquet_from_text(
             text_file_dir=data_dir,
-            db_name=db_filename,
-            table_name=TABLE_NAME,
+            output_dir=output_dir,
             dataset_type=dataset_type,
         )
         
         # Step 2: Verify case counts
         if verify_case_counts:
             logger.info("Step 2: Verifying case counts")
-            _verify_case_counts(db_path, dataset_type)
+            _verify_case_counts(parquet_dir, dataset_type)
         
         # Step 3: Apply standard transformations
-        logger.info("Step 3: Applying standard transformations")
-        _apply_transformations(db_path, dataset_type, memory_limit)
+        if apply_transforms:
+            logger.info("Step 3: Applying standard transformations")
+            apply_transformations(parquet_dir, dataset_type, memory_limit)
         
         # Step 4: Generate data dictionary
-        result = {"database": db_path, "log": log_path}
+        result = {"parquet_dir": parquet_dir, "log": log_path}
         
         if generate_dictionary:
             logger.info("Step 4: Generating data dictionary")
-            dict_path = _generate_data_dictionary(db_path, output_dir, dataset_type)
+            dict_path = _generate_data_dictionary(parquet_dir, output_dir, dataset_type)
             result["dictionary"] = dict_path
         
-        logger.info(f"Build complete! Database saved to: {db_path}")
+        logger.info(f"Build complete! Dataset saved to: {parquet_dir}")
+        return result
         
     except Exception as e:
-        logger.error(f"Build failed: {str(e)}", exc_info=True)
-        raise RuntimeError(f"Failed to build NSQIP database: {str(e)}") from e
-    
+        logger.error(f"Build failed: {e}")
+        raise RuntimeError(f"Failed to build NSQIP dataset: {str(e)}") from e
     finally:
-        # Remove file handler
+        # Remove the file handler to avoid duplicate logs
         logger.removeHandler(file_handler)
         file_handler.close()
-    
-    return result
 
 
-def _verify_case_counts(db_path: Path, dataset_type: str) -> None:
-    """Verify that case counts match expected values per year.
+def _verify_case_counts(parquet_dir: Path, dataset_type: str) -> None:
+    """Verify case counts match expected values from constants.
     
-    Logs warnings for any mismatches but does not fail the build.
+    Args:
+        parquet_dir: Path to parquet directory
+        dataset_type: Type of dataset being verified
     """
+    import polars as pl
+    import json
+    
+    # Read metadata
+    metadata_path = parquet_dir / "metadata.json"
+    with open(metadata_path, 'r') as f:
+        metadata = json.load(f)
+    
+    # Get expected counts
     expected_counts = EXPECTED_CASE_COUNTS.get(dataset_type, {})
+    if not expected_counts:
+        logger.warning(f"No expected case counts defined for {dataset_type} dataset")
+        return
     
-    with duckdb.connect(str(db_path), read_only=True) as con:
-        # Get actual counts by year
-        actual_counts = con.execute(f"""
-            SELECT OPERYR, COUNT(*) as case_count
-            FROM {TABLE_NAME}
-            GROUP BY OPERYR
-            ORDER BY OPERYR
-        """).df()
-        
-        # Convert to dictionary for easier comparison
-        actual_dict = dict(zip(
-            actual_counts['OPERYR'].astype(str),
-            actual_counts['case_count']
-        ))
-        
-        # Check each year
-        all_match = True
-        for year, expected in expected_counts.items():
-            actual = actual_dict.get(year, 0)
-            
-            if actual != expected:
-                all_match = False
-                diff = actual - expected
-                pct_diff = (diff / expected) * 100 if expected > 0 else 0
-                
-                logger.warning(
-                    f"Case count mismatch for year {year}: "
-                    f"expected {expected:,}, found {actual:,} "
-                    f"(difference: {diff:+,}, {pct_diff:+.1f}%)"
-                )
-            else:
-                logger.info(f"Year {year}: {actual:,} cases ✓")
-        
-        # Check for unexpected years
-        for year in actual_dict:
-            if year not in expected_counts:
-                logger.warning(
-                    f"Found data for unexpected year {year}: "
-                    f"{actual_dict[year]:,} cases"
-                )
-        
-        if all_match:
-            logger.info("All case counts match expected values!")
-        else:
-            logger.warning(
-                "Case count verification completed with mismatches. "
-                "Please review the warnings above."
-            )
-
-
-def _apply_transformations(
-    db_path: Path,
-    dataset_type: str,
-    memory_limit: str,
-) -> None:
-    """Apply all standard transformations to the database.
-    
-    This includes:
-    - Type conversions for numeric columns
-    - Age field processing (90+ handling)
-    - CPT array creation
-    - Diagnosis array creation  
-    - Race field combination
-    - RVU calculations
-    - Free flap indicators
-    """
-    logger.info("Connecting to database for transformations")
-    
-    with duckdb.connect(str(db_path)) as con:
-        # Set memory limit
-        con.execute(f"SET memory_limit='{memory_limit}'")
-        
-        # Get all columns
-        columns_df = con.execute(
-            f"SELECT column_name, data_type FROM information_schema.columns "
-            f"WHERE table_name = '{TABLE_NAME}'"
-        ).df()
-        all_columns = set(columns_df['column_name'].tolist())
-        
-        # Step 1: Convert numeric columns (excluding those that should stay string)
-        logger.info("Converting numeric columns")
-        numeric_columns = []
-        for col in all_columns:
-            if col not in NEVER_NUMERIC:
-                # Check if column contains numeric data
-                try:
-                    sample = con.execute(
-                        f"SELECT {col} FROM {TABLE_NAME} "
-                        f"WHERE {col} IS NOT NULL LIMIT 100"
-                    ).fetchall()
-                    
-                    if sample and _is_likely_numeric(sample):
-                        numeric_columns.append(col)
-                except:
-                    # Skip columns that cause errors
-                    pass
-        
-        if numeric_columns:
-            logger.info(f"Converting {len(numeric_columns)} numeric columns")
-            for col in numeric_columns:
-                try:
-                    cast_column_in_place(db_path, TABLE_NAME, [col], "DOUBLE")
-                except Exception as e:
-                    logger.warning(f"Could not convert {col} to numeric: {e}")
-        
-        # Step 2: Handle age column
-        if AGE_FIELD in all_columns:
-            logger.info("Processing age column")
-            handle_age_column(db_path, TABLE_NAME)
-        
-        # Step 3: Create CPT array column
-        cpt_cols_present = [col for col in CPT_COLUMNS if col in all_columns]
-        if cpt_cols_present:
-            logger.info("Creating CPT array column")
-            create_cpt_array_column(db_path, TABLE_NAME, cpt_cols_present)
-        
-        # Step 4: Create diagnosis array column
-        diag_cols_present = [col for col in DIAGNOSIS_COLUMNS if col in all_columns]
-        if diag_cols_present:
-            logger.info("Creating diagnosis array column")
-            _create_diagnosis_array_column(con, diag_cols_present)
-        
-        # Step 5: Handle comma-separated columns
-        comma_cols_present = [col for col in COMMA_SEPARATED_COLUMNS if col in all_columns]
-        if comma_cols_present:
-            logger.info(f"Converting comma-separated columns: {comma_cols_present}")
-            split_comma_separated_columns(db_path, TABLE_NAME, comma_cols_present)
-        
-        # Step 6: Combine race columns
-        if RACE_FIELD in all_columns and RACE_NEW_FIELD in all_columns:
-            logger.info("Combining race columns")
-            _combine_race_columns(con)
-        
-        # Step 7: Calculate RVU (if applicable)
-        if dataset_type == "adult":
-            rvu_cols = [col for col in all_columns if col.startswith("WORKRVU")]
-            if rvu_cols:
-                logger.info("Calculating total work RVU")
-                calculate_work_rvu(db_path, TABLE_NAME, rvu_cols)
-        
-        # Step 8: Derive free flap indicators
-        if ALL_CPT_CODES_FIELD in all_columns or cpt_cols_present:
-            logger.info("Deriving free flap indicators")
-            derive_free_flap_columns(db_path, TABLE_NAME)
-
-
-def _is_likely_numeric(samples: list) -> bool:
-    """Check if samples are likely numeric values."""
-    for value in samples:
-        if value[0] is None:
+    # Read all parquet files and count by year
+    actual_counts = {}
+    for parquet_file in parquet_dir.glob("*.parquet"):
+        if parquet_file.name == "metadata.json":
             continue
-        try:
-            float(str(value[0]))
-        except (ValueError, TypeError):
-            return False
-    return True
+            
+        df = pl.scan_parquet(parquet_file)
+        
+        # Try to get year from OPERYR column
+        if "OPERYR" in df.columns:
+            year_counts = df.group_by("OPERYR").agg(pl.count()).collect()
+            for row in year_counts.iter_rows():
+                year = str(row[0])
+                count = row[1]
+                actual_counts[year] = actual_counts.get(year, 0) + count
+        else:
+            # If no OPERYR, count total rows
+            total = df.select(pl.count()).collect().item()
+            actual_counts["total"] = actual_counts.get("total", 0) + total
+    
+    # Compare counts
+    has_mismatch = False
+    for year, expected in expected_counts.items():
+        actual = actual_counts.get(year, 0)
+        if actual != expected:
+            logger.warning(
+                f"Case count mismatch for year {year}: "
+                f"expected {expected:,}, found {actual:,} "
+                f"(difference: {actual - expected:+,})"
+            )
+            has_mismatch = True
+        else:
+            logger.info(f"Year {year}: {actual:,} cases ✓")
+    
+    # Report any unexpected years
+    for year, count in actual_counts.items():
+        if year not in expected_counts:
+            logger.warning(f"Unexpected year {year} with {count:,} cases")
+    
+    if has_mismatch:
+        logger.warning("Case count verification completed with mismatches")
+    else:
+        logger.info("Case count verification passed")
 
 
-def _create_diagnosis_array_column(con: duckdb.DuckDBPyConnection, diag_cols: list) -> None:
-    """Create array column combining all diagnosis codes."""
-    # Build SQL to create array of non-null diagnosis codes
-    array_elements = []
-    for col in diag_cols:
-        array_elements.append(f"CASE WHEN {col} IS NOT NULL THEN {col} END")
+def _generate_data_dictionary(parquet_dir: Path, output_dir: Path, dataset_type: str) -> Path:
+    """Generate data dictionary from parquet files.
     
-    array_sql = f"[{', '.join(array_elements)}]"
+    Args:
+        parquet_dir: Path to parquet directory
+        output_dir: Directory for output files
+        dataset_type: Type of dataset
+        
+    Returns:
+        Path to generated data dictionary
+    """
+    generator = DataDictionaryGenerator(parquet_dir)
     
-    # Remove nulls from array
-    clean_array_sql = f"list_filter({array_sql}, x -> x IS NOT NULL)"
+    # Generate in multiple formats
+    dict_filename = f"{dataset_type}_data_dictionary"
     
-    con.execute(f"""
-        ALTER TABLE {TABLE_NAME} 
-        ADD COLUMN {ALL_DIAGNOSIS_CODES_FIELD} VARCHAR[]
-    """)
+    # CSV format (primary)
+    dict_path = output_dir / f"{dict_filename}.csv"
+    generator.generate_csv(dict_path)
+    logger.info(f"Generated data dictionary: {dict_path}")
     
-    con.execute(f"""
-        UPDATE {TABLE_NAME}
-        SET {ALL_DIAGNOSIS_CODES_FIELD} = {clean_array_sql}
-    """)
+    # Excel format
+    excel_path = output_dir / f"{dict_filename}.xlsx"
+    generator.generate_excel(excel_path)
+    logger.info(f"Generated Excel data dictionary: {excel_path}")
+    
+    # HTML format
+    html_path = output_dir / f"{dict_filename}.html"
+    generator.generate_html(html_path)
+    logger.info(f"Generated HTML data dictionary: {html_path}")
+    
+    return dict_path
 
 
-def _combine_race_columns(con: duckdb.DuckDBPyConnection) -> None:
-    """Combine RACE and RACE_NEW columns."""
-    con.execute(f"""
-        ALTER TABLE {TABLE_NAME}
-        ADD COLUMN {RACE_COMBINED_FIELD} VARCHAR
-    """)
-    
-    con.execute(f"""
-        UPDATE {TABLE_NAME}
-        SET {RACE_COMBINED_FIELD} = COALESCE({RACE_NEW_FIELD}, {RACE_FIELD})
-    """)
-
-
-def _generate_data_dictionary(
-    db_path: Path,
-    output_dir: Path,
-    dataset_type: str,
-) -> Path:
-    """Generate data dictionary using the DataDictionaryGenerator."""
-    generator = DataDictionaryGenerator(db_path)
-    
-    # Generate all formats
-    dict_base = output_dir / f"{dataset_type}_data_dictionary"
-    
-    # CSV format (primary for non-technical users)
-    csv_path = dict_base.with_suffix(".csv")
-    generator.save_to_csv(csv_path)
-    
-    # JSON format (for programmatic access)
-    json_path = dict_base.with_suffix(".json")
-    generator.save_to_json(json_path)
-    
-    # HTML format (for easy viewing)
-    html_path = dict_base.with_suffix(".html")
-    generator.save_to_html(html_path)
-    
-    logger.info(f"Data dictionary saved to: {csv_path}")
-    
-    return csv_path
+# Keep backward compatibility
