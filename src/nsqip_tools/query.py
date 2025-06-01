@@ -128,8 +128,10 @@ class NSQIPQuery:
         if isinstance(years, int):
             years = [years]
         
+        # Handle both string and numeric OPERYR values
+        year_strs = [str(y) for y in years]
         self._lazy_frame = self._lazy_frame.filter(
-            pl.col("OPERYR").is_in(years)
+            pl.col("OPERYR").is_in(year_strs)
         )
         return self
     
@@ -163,7 +165,8 @@ class NSQIPQuery:
         if isinstance(cpt_codes, str):
             cpt_codes = [cpt_codes]
         
-        if ALL_CPT_CODES_FIELD in self._lazy_frame.columns:
+        schema_names = self._lazy_frame.collect_schema().names()
+        if ALL_CPT_CODES_FIELD in schema_names:
             # Use the array column if it exists
             if use_any:
                 # Check if any CPT code is in the list
@@ -234,7 +237,8 @@ class NSQIPQuery:
         if isinstance(diagnosis_codes, str):
             diagnosis_codes = [diagnosis_codes]
         
-        if ALL_DIAGNOSIS_CODES_FIELD in self._lazy_frame.columns:
+        schema_names = self._lazy_frame.collect_schema().names()
+        if ALL_DIAGNOSIS_CODES_FIELD in schema_names:
             # Use the array column if it exists
             if use_any:
                 expr = pl.col(ALL_DIAGNOSIS_CODES_FIELD).list.eval(
@@ -251,7 +255,7 @@ class NSQIPQuery:
             # Fall back to checking individual columns
             diag_columns = []
             for col in DIAGNOSIS_COLUMNS:
-                if col in self._lazy_frame.columns:
+                if col in schema_names:
                     diag_columns.append(col)
             
             if not diag_columns:
@@ -322,7 +326,8 @@ class NSQIPQuery:
         ]
         
         # Only select columns that exist
-        available_cols = [col for col in demographic_cols if col in self._lazy_frame.columns]
+        schema_names = self._lazy_frame.collect_schema().names()
+        available_cols = [col for col in demographic_cols if col in schema_names]
         
         self._lazy_frame = self._lazy_frame.select(available_cols)
         return self
@@ -343,7 +348,8 @@ class NSQIPQuery:
             "DEATH30YN", "READMSUSP1",
         ]
         
-        available_cols = [col for col in outcome_cols if col in self._lazy_frame.columns]
+        schema_names = self._lazy_frame.collect_schema().names()
+        available_cols = [col for col in outcome_cols if col in schema_names]
         
         self._lazy_frame = self._lazy_frame.select(available_cols)
         return self
@@ -354,7 +360,7 @@ class NSQIPQuery:
         Returns:
             Number of rows.
         """
-        return self._lazy_frame.select(pl.count()).collect().item()
+        return self._lazy_frame.select(pl.len()).collect().item()
     
     def collect(self) -> pl.DataFrame:
         """Execute the query and return results as a DataFrame.
@@ -367,7 +373,7 @@ class NSQIPQuery:
         """
         # Estimate memory usage
         row_count = self.count()
-        col_count = len(self._lazy_frame.columns)
+        col_count = len(self._lazy_frame.collect_schema().names())
         
         # Rough estimate: 8 bytes per cell average
         estimated_memory = row_count * col_count * 8
@@ -397,12 +403,9 @@ class NSQIPQuery:
         if n >= total_rows:
             return self.collect()
         
-        # Calculate fraction
-        fraction = n / total_rows
-        
-        return (self._lazy_frame
-                .filter(pl.col("CASEID").sample(fraction=fraction, seed=seed))
-                .collect())
+        # Collect first then sample (LazyFrame doesn't have sample method)
+        df = self._lazy_frame.collect()
+        return df.sample(n=n, seed=seed)
     
     def describe(self) -> Dict[str, Any]:
         """Get summary statistics about the current query.
@@ -412,7 +415,7 @@ class NSQIPQuery:
         """
         return {
             "total_rows": self.count(),
-            "columns": len(self._lazy_frame.columns),
+            "columns": len(self._lazy_frame.collect_schema().names()),
             "parquet_files": len(self.parquet_files),
             "path": str(self.parquet_path),
         }
