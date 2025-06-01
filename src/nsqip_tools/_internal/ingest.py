@@ -32,12 +32,14 @@ def create_parquet_from_text(
         logging.warning(f"No .txt files found in {text_file_dir}")
         raise ValueError(f"No .txt files found in {text_file_dir}")
     
-    # Create output directory
+    # Use provided output directory or default to text file directory
     if output_dir is None:
-        output_dir = text_file_dir
+        # Create parquet subdirectory in text file directory
+        parquet_dir = text_file_dir / f"{dataset_type}_nsqip_parquet"
+    else:
+        # Use the provided output directory directly (already named appropriately)
+        parquet_dir = output_dir
     
-    # Create parquet directory
-    parquet_dir = output_dir / f"{dataset_type}_nsqip_parquet"
     parquet_dir.mkdir(exist_ok=True)
     
     logging.info(f"Dataset type: {dataset_type}")
