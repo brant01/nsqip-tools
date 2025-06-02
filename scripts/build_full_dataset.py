@@ -31,13 +31,13 @@ def main():
         )
         
         print("\n" + "=" * 50)
-        print("✅ BUILD COMPLETE!")
+        print("BUILD COMPLETE!")
         print(f"Dataset location: {result['parquet_dir']}")
         print(f"Data dictionary: {result.get('dictionary', 'Not generated')}")
         print(f"Log file: {result['log']}")
         
     except Exception as e:
-        print(f"\n❌ Build failed: {e}")
+        print(f"\nBuild failed: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

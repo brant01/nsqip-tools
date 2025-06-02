@@ -218,7 +218,7 @@ def _verify_case_counts(parquet_dir: Path, dataset_type: str) -> None:
             )
             has_mismatch = True
         else:
-            logger.info(f"Year {year}: {actual:,} cases ✓")
+            logger.info(f"Year {year}: {actual:,} cases (verified)")
     
     # Report any unexpected years
     for year, count in actual_counts.items():
