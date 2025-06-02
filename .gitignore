@@ -41,3 +41,6 @@ Thumbs.db
 # Jupyter notebooks (removed to prevent data leakage)
 *.ipynb
 .ipynb_checkpoints/
+
+# Test files for real data (not for public release)
+test_real_data.py

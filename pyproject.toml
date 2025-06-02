@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Jason Brant", email = ""},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -33,5 +33,6 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/nsqip-tools"
-"Bug Tracker" = "https://github.com/yourusername/nsqip-tools/issues"
+"Homepage" = "https://github.com/brant01/nsqip_tools"
+"Bug Tracker" = "https://github.com/brant01/nsqip_tools/issues"
+"Source Code" = "https://github.com/brant01/nsqip_tools"
