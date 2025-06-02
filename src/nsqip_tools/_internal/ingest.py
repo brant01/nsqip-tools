@@ -171,10 +171,10 @@ def align_df_to_schema(
     # Find missing columns
     missing_cols = [col for col in all_columns if col not in current_cols]
     
-    # Add missing columns as null
+    # Add missing columns as null strings (not null dtype)
     if missing_cols:
         df = df.with_columns([
-            pl.lit(None).alias(col) for col in missing_cols
+            pl.lit(None).cast(pl.Utf8).alias(col) for col in missing_cols
         ])
     
     # Reorder to match schema

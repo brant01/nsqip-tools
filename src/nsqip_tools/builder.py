@@ -1,5 +1,4 @@
 """Main API for building NSQIP parquet datasets.
-
 This module provides the high-level interface for converting NSQIP text files
 into optimized parquet datasets with standard transformations.
 """
@@ -290,10 +289,10 @@ def _generate_data_dictionary(parquet_dir: Path, output_dir: Path, dataset_type:
     generator.generate_csv(dict_path)
     logger.info(f"Generated data dictionary: {dict_path}")
     
-    # Excel format
-    excel_path = output_dir / f"{dict_filename}.xlsx"
-    generator.generate_excel(excel_path)
-    logger.info(f"Generated Excel data dictionary: {excel_path}")
+    # JSON format
+    json_path = output_dir / f"{dict_filename}.json"
+    generator.generate_json(json_path)
+    logger.info(f"Generated JSON data dictionary: {json_path}")
     
     # HTML format
     html_path = output_dir / f"{dict_filename}.html"

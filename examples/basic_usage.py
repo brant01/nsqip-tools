@@ -104,7 +104,6 @@ def data_dictionary_example():
     
     # Generate in different formats
     generator.generate_csv("data_dictionary.csv")
-    generator.generate_excel("data_dictionary.xlsx")
     generator.generate_html("data_dictionary.html")
     
     print("Data dictionaries generated in CSV, Excel, and HTML formats")
