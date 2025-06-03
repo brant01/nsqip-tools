@@ -36,3 +36,8 @@ dev = [
 "Homepage" = "https://github.com/brant01/nsqip_tools"
 "Bug Tracker" = "https://github.com/brant01/nsqip_tools/issues"
 "Source Code" = "https://github.com/brant01/nsqip_tools"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]

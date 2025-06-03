@@ -4,7 +4,7 @@ This module provides a fluent API for filtering NSQIP data that integrates
 seamlessly with Polars LazyFrame operations.
 """
 from pathlib import Path
-from typing import List, Optional, Union, Self, Dict, Any
+from typing import List, Optional, Union, Self
 import polars as pl
 import json
 
@@ -13,7 +13,6 @@ from .constants import (
     ALL_DIAGNOSIS_CODES_FIELD,
     DIAGNOSIS_COLUMNS,
 )
-from ._internal.memory_utils import get_available_memory, format_bytes
 
 
 class NSQIPQuery:
@@ -27,6 +26,7 @@ class NSQIPQuery:
         >>> df = (NSQIPQuery("path/to/parquet/dir")
         ...       .filter_by_cpt(["44970", "44979"])
         ...       .filter_by_year([2020, 2021])
+        ...       .lazy_frame
         ...       .collect())
         
         >>> # Combine with Polars operations
@@ -77,10 +77,6 @@ class NSQIPQuery:
         
         # Initialize lazy frame that reads all parquet files
         self._lazy_frame = self._load_all_parquet_files()
-        
-        # Check memory
-        available_memory = get_available_memory()
-        self._memory_warning_threshold = 0.8  # Warn if result might use >80% of available memory
         
     def _load_all_parquet_files(self) -> pl.LazyFrame:
         """Load all parquet files as a single LazyFrame.
@@ -309,116 +305,6 @@ class NSQIPQuery:
         self._lazy_frame = self._lazy_frame.select(active_columns)
         
         return self
-    
-    def select_demographics(self) -> Self:
-        """Select common demographic variables.
-        
-        Returns:
-            Self for method chaining.
-        """
-        demographic_cols = [
-            "CASEID", "OPERYR", "AGE", "AGE_AS_INT", "AGE_IS_90_PLUS",
-            "SEX", "RACE", "RACE_NEW", "RACE_COMBINED", "ETHNICITY",
-            "HEIGHT", "WEIGHT", "BMI", "DIABETES", "SMOKE", "DYSPNEA",
-            "FNSTATUS1", "FNSTATUS2", "HXCOPD", "ASCITES", "HXCHF",
-            "HYPERMED", "RENAFAIL", "DIALYSIS", "DISCANCR", "WNDINF",
-            "STEROID", "WTLOSS", "BLEEDIS", "TRANSFUS", "PRSEPIS",
-        ]
-        
-        # Only select columns that exist
-        schema_names = self._lazy_frame.collect_schema().names()
-        available_cols = [col for col in demographic_cols if col in schema_names]
-        
-        self._lazy_frame = self._lazy_frame.select(available_cols)
-        return self
-    
-    def select_outcomes(self) -> Self:
-        """Select common outcome variables.
-        
-        Returns:
-            Self for method chaining.
-        """
-        outcome_cols = [
-            "CASEID", "OPERYR", "OPTIME", "TOTHLOS", "DSUPINFEC",
-            "SUPINFEC", "WNDINFD", "ORGSPCSSI", "DEHIS", "OUPNEUMO",
-            "REINTUB", "PULEMBOL", "FAILWEAN", "RENAINSF", "OPRENAFL",
-            "URNINFEC", "CNSCVA", "CDARREST", "CDMI", "OTHBLEED",
-            "OTHDVT", "OTHSYSEP", "OTHSESHOCK", "READMISSION1",
-            "REOPERATION1", "MORTALITY", "MORTPROB", "MORBPROB",
-            "DEATH30YN", "READMSUSP1",
-        ]
-        
-        schema_names = self._lazy_frame.collect_schema().names()
-        available_cols = [col for col in outcome_cols if col in schema_names]
-        
-        self._lazy_frame = self._lazy_frame.select(available_cols)
-        return self
-    
-    def count(self) -> int:
-        """Get the count of rows matching current filters.
-        
-        Returns:
-            Number of rows.
-        """
-        return self._lazy_frame.select(pl.len()).collect().item()
-    
-    def collect(self) -> pl.DataFrame:
-        """Execute the query and return results as a DataFrame.
-        
-        Returns:
-            Polars DataFrame with query results.
-            
-        Raises:
-            MemoryError: If the result set is too large for available memory.
-        """
-        # Estimate memory usage
-        row_count = self.count()
-        col_count = len(self._lazy_frame.collect_schema().names())
-        
-        # Rough estimate: 8 bytes per cell average
-        estimated_memory = row_count * col_count * 8
-        available_memory = get_available_memory()
-        
-        if estimated_memory > available_memory * self._memory_warning_threshold:
-            raise MemoryError(
-                f"Query result ({format_bytes(estimated_memory)}) may exceed "
-                f"available memory ({format_bytes(available_memory)}). "
-                f"Consider using .lazy_frame for streaming operations."
-            )
-        
-        return self._lazy_frame.collect()
-    
-    def sample(self, n: int = 1000, seed: Optional[int] = None) -> pl.DataFrame:
-        """Get a random sample of rows.
-        
-        Args:
-            n: Number of rows to sample.
-            seed: Random seed for reproducibility.
-            
-        Returns:
-            DataFrame with sampled rows.
-        """
-        total_rows = self.count()
-        
-        if n >= total_rows:
-            return self.collect()
-        
-        # Collect first then sample (LazyFrame doesn't have sample method)
-        df = self._lazy_frame.collect()
-        return df.sample(n=n, seed=seed)
-    
-    def describe(self) -> Dict[str, Any]:
-        """Get summary statistics about the current query.
-        
-        Returns:
-            Dictionary with query information.
-        """
-        return {
-            "total_rows": self.count(),
-            "columns": len(self._lazy_frame.collect_schema().names()),
-            "parquet_files": len(self.parquet_files),
-            "path": str(self.parquet_path),
-        }
 
 
 def load_data(
@@ -446,6 +332,13 @@ def load_data(
         
         >>> # Load multiple years
         >>> query = load_data("path/to/parquet/dir", year=[2019, 2020, 2021])
+        
+        >>> # Access the underlying LazyFrame for Polars operations
+        >>> df = (load_data("path/to/parquet/dir")
+        ...       .filter_by_cpt("44970")
+        ...       .lazy_frame
+        ...       .select(["CASEID", "AGE", "OPERYR"])
+        ...       .collect())
     """
     query = NSQIPQuery(data_path)
     

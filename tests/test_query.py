@@ -37,7 +37,7 @@ def test_load_data(tmp_path):
     assert isinstance(query, NSQIPQuery)
     
     # Test collecting all data
-    df = query.collect()
+    df = query.lazy_frame.collect()
     assert len(df) == 4
     assert "CASEID" in df.columns
 
@@ -50,6 +50,7 @@ def test_filter_by_cpt(tmp_path):
     # Single CPT
     df = (nsqip_tools.load_data(dataset_dir)
           .filter_by_cpt(["44970"])
+          .lazy_frame
           .collect())
     assert len(df) == 2
     assert all(df["CPT"] == "44970")
@@ -57,6 +58,7 @@ def test_filter_by_cpt(tmp_path):
     # Multiple CPTs
     df = (nsqip_tools.load_data(dataset_dir)
           .filter_by_cpt(["47562", "47563"])
+          .lazy_frame
           .collect())
     assert len(df) == 2
 
@@ -68,6 +70,7 @@ def test_filter_by_year(tmp_path):
     
     df = (nsqip_tools.load_data(dataset_dir)
           .filter_by_year([2020])
+          .lazy_frame
           .collect())
     assert len(df) == 2
     assert all(df["OPERYR"] == "2020")
@@ -80,6 +83,7 @@ def test_filter_by_diagnosis(tmp_path):
     
     df = (nsqip_tools.load_data(dataset_dir)
           .filter_by_diagnosis(["K80.20"])
+          .lazy_frame
           .collect())
     assert len(df) == 2
 
@@ -92,6 +96,7 @@ def test_chaining_filters(tmp_path):
     df = (nsqip_tools.load_data(dataset_dir)
           .filter_by_year([2021])
           .filter_by_cpt(["44970"])
+          .lazy_frame
           .collect())
     assert len(df) == 1
     assert df["CASEID"][0] == "3"
@@ -119,64 +124,6 @@ def test_nonexistent_dataset():
         nsqip_tools.load_data("does_not_exist")
 
 
-def test_count_method(tmp_path):
-    """Test the count method."""
-    dataset_dir = tmp_path / "test_dataset"
-    create_test_parquet_dataset(dataset_dir)
-    
-    query = nsqip_tools.load_data(dataset_dir)
-    total_count = query.count()
-    assert total_count == 4
-    
-    # Test count with filters
-    filtered_count = query.filter_by_year([2020]).count()
-    assert filtered_count == 2
-
-
-def test_sample_method(tmp_path):
-    """Test the sample method."""
-    dataset_dir = tmp_path / "test_dataset"
-    create_test_parquet_dataset(dataset_dir)
-    
-    query = nsqip_tools.load_data(dataset_dir)
-    
-    # Sample more than available - should return all
-    sample_df = query.sample(n=10)
-    assert len(sample_df) == 4
-    
-    # Sample less than available
-    sample_df = query.sample(n=2, seed=42)
-    assert len(sample_df) == 2
-
-
-def test_describe_method(tmp_path):
-    """Test the describe method."""
-    dataset_dir = tmp_path / "test_dataset"
-    create_test_parquet_dataset(dataset_dir)
-    
-    query = nsqip_tools.load_data(dataset_dir)
-    info = query.describe()
-    
-    assert info["total_rows"] == 4
-    assert info["columns"] == 7  # Number of columns in test data
-    assert info["parquet_files"] == 2  # 2020 and 2021 files
-    assert str(dataset_dir) in str(info["path"])
-
-
-def test_select_demographics(tmp_path):
-    """Test select_demographics method."""
-    dataset_dir = tmp_path / "test_dataset"
-    create_test_parquet_dataset(dataset_dir)
-    
-    query = (nsqip_tools.load_data(dataset_dir)
-             .select_demographics())
-    
-    df = query.collect()
-    # Should only have demographic columns that exist in our test data
-    assert "CASEID" in df.columns
-    assert "OPERYR" in df.columns
-    assert "AGE" in df.columns
-    # Other demo columns won't be present in our simple test data
 
 
 def test_single_parquet_file(tmp_path):
@@ -192,6 +139,6 @@ def test_single_parquet_file(tmp_path):
     df.write_parquet(parquet_file)
     
     query = nsqip_tools.load_data(parquet_file)
-    result_df = query.collect()
+    result_df = query.lazy_frame.collect()
     assert len(result_df) == 2
     assert "CASEID" in result_df.columns
