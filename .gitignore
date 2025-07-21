@@ -47,3 +47,5 @@ test_real_data.py
 
 # Claude.ai configuration
 CLAUDE.md
+
+/claude_config

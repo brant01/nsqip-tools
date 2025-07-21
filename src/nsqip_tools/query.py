@@ -4,7 +4,7 @@ This module provides a fluent API for filtering NSQIP data that integrates
 seamlessly with Polars LazyFrame operations.
 """
 from pathlib import Path
-from typing import List, Optional, Union, Self
+from typing import List, Optional, Union, Self, Any
 import polars as pl
 import json
 
@@ -16,26 +16,35 @@ from .constants import (
 
 
 class NSQIPQuery:
-    """A query builder for NSQIP data that returns Polars LazyFrames.
+    """A query builder for NSQIP data that behaves like a Polars LazyFrame.
     
-    This class provides a fluent interface for filtering NSQIP data that can be
-    chained with standard Polars operations.
+    This class provides a fluent interface for filtering NSQIP data and 
+    transparently delegates all LazyFrame methods, allowing seamless integration
+    with Polars operations.
     
     Examples:
-        >>> # Basic filtering
+        >>> # Basic filtering with direct collect()
         >>> df = (NSQIPQuery("path/to/parquet/dir")
         ...       .filter_by_cpt(["44970", "44979"])
         ...       .filter_by_year([2020, 2021])
-        ...       .lazy_frame
         ...       .collect())
         
-        >>> # Combine with Polars operations
+        >>> # Use any Polars LazyFrame method directly
+        >>> df = (NSQIPQuery("path/to/parquet/dir")
+        ...       .filter(
+        ...           (pl.col("ALL_CPT_CODES").list.len() == 1) &
+        ...           (pl.col("ALL_CPT_CODES").list.first().is_in(["42821", "42826"]))
+        ...       )
+        ...       .select(["CASEID", "AGE", "OPERYR", "CPT"])
+        ...       .collect())
+        
+        >>> # Mix NSQIP-specific and Polars methods
         >>> df = (NSQIPQuery("path/to/parquet/dir")
         ...       .filter_by_diagnosis(["K80.20"])
-        ...       .filter_active_variables()
-        ...       .lazy_frame
-        ...       .select(["CASEID", "AGE", "OPERYR", "CPT"])
         ...       .filter(pl.col("AGE_AS_INT") > 50)
+        ...       .with_columns(pl.col("AGE_AS_INT").alias("patient_age"))
+        ...       .group_by("OPERYR")
+        ...       .agg(pl.count())
         ...       .collect())
     """
     
@@ -305,6 +314,37 @@ class NSQIPQuery:
         self._lazy_frame = self._lazy_frame.select(active_columns)
         
         return self
+    
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the underlying LazyFrame.
+        
+        This allows NSQIPQuery to behave like a LazyFrame, supporting all
+        LazyFrame methods transparently.
+        
+        Args:
+            name: Attribute name to access.
+            
+        Returns:
+            The attribute from the underlying LazyFrame.
+        """
+        # Get the attribute from the LazyFrame
+        attr = getattr(self._lazy_frame, name)
+        
+        # If it's a method that returns a LazyFrame, wrap it to return NSQIPQuery
+        if callable(attr):
+            def wrapper(*args, **kwargs):
+                result = attr(*args, **kwargs)
+                if isinstance(result, pl.LazyFrame):
+                    # Create a new NSQIPQuery with the modified LazyFrame
+                    new_query = NSQIPQuery.__new__(NSQIPQuery)
+                    new_query.parquet_path = self.parquet_path
+                    new_query.parquet_files = self.parquet_files
+                    new_query.metadata = self.metadata
+                    new_query._lazy_frame = result
+                    return new_query
+                return result
+            return wrapper
+        return attr
 
 
 def load_data(
@@ -314,30 +354,35 @@ def load_data(
     """Load NSQIP data from a parquet directory.
     
     This is the main entry point for loading NSQIP data. It returns an
-    NSQIPQuery object that can be used to filter and analyze the data.
+    NSQIPQuery object that behaves like a LazyFrame and supports all Polars
+    operations directly.
     
     Args:
         data_path: Path to the parquet directory or file.
         year: Optional year(s) to filter to immediately.
         
     Returns:
-        NSQIPQuery object for further filtering and analysis.
+        NSQIPQuery object that supports both NSQIP-specific filtering methods
+        and all standard Polars LazyFrame operations.
         
     Examples:
-        >>> # Load all data
-        >>> query = load_data("path/to/parquet/dir")
-        
-        >>> # Load specific year
-        >>> query = load_data("path/to/parquet/dir", year=2021)
-        
-        >>> # Load multiple years
-        >>> query = load_data("path/to/parquet/dir", year=[2019, 2020, 2021])
-        
-        >>> # Access the underlying LazyFrame for Polars operations
+        >>> # Load all data and use directly like a LazyFrame
         >>> df = (load_data("path/to/parquet/dir")
+        ...       .filter(pl.col("AGE_AS_INT") > 50)
+        ...       .collect())
+        
+        >>> # Mix NSQIP-specific and Polars methods
+        >>> df = (load_data("path/to/parquet/dir", year=2021)
         ...       .filter_by_cpt("44970")
-        ...       .lazy_frame
         ...       .select(["CASEID", "AGE", "OPERYR"])
+        ...       .collect())
+        
+        >>> # Complex filtering with Polars expressions
+        >>> df = (load_data("path/to/parquet/dir")
+        ...       .filter(
+        ...           (pl.col("ALL_CPT_CODES").list.len() == 1) &
+        ...           (pl.col("ALL_CPT_CODES").list.first().is_in(["42821", "42826"]))
+        ...       )
         ...       .collect())
     """
     query = NSQIPQuery(data_path)
