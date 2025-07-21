@@ -103,8 +103,84 @@ class NSQIPQuery:
         if len(lazy_frames) == 1:
             return lazy_frames[0]
         else:
-            # Union all frames - they should have the same schema
-            return pl.concat(lazy_frames, how="vertical_relaxed")
+            # Align schemas before concatenating to handle type mismatches
+            return self._align_and_concat_schemas(lazy_frames)
+    
+    def _align_and_concat_schemas(self, lazy_frames: List[pl.LazyFrame]) -> pl.LazyFrame:
+        """Align schemas of multiple LazyFrames and concatenate them.
+        
+        This method handles data type mismatches between parquet files by:
+        1. Finding a common schema across all files
+        2. Casting columns to compatible types
+        3. Ensuring all files have the same columns
+        
+        Args:
+            lazy_frames: List of LazyFrames to align and concatenate
+            
+        Returns:
+            Single LazyFrame with aligned schema
+        """
+        if not lazy_frames:
+            raise ValueError("No LazyFrames provided")
+        
+        if len(lazy_frames) == 1:
+            return lazy_frames[0]
+        
+        # Get all schemas
+        schemas = [lf.collect_schema() for lf in lazy_frames]
+        
+        # Find the union of all column names
+        all_columns = set()
+        for schema in schemas:
+            all_columns.update(schema.names())
+        
+        # Determine the "best" data type for each column across all files
+        column_types = {}
+        for col_name in all_columns:
+            types_for_column = []
+            for schema in schemas:
+                if col_name in schema:
+                    types_for_column.append(schema[col_name])
+            
+            # Choose the most general type (precedence: String > Float64 > Float32 > Int64 > Int32 > Boolean)
+            if pl.String in types_for_column:
+                column_types[col_name] = pl.String
+            elif pl.Float64 in types_for_column:
+                column_types[col_name] = pl.Float64
+            elif pl.Float32 in types_for_column:
+                column_types[col_name] = pl.Float64  # Promote to Float64
+            elif pl.Int64 in types_for_column:
+                column_types[col_name] = pl.Int64
+            elif pl.Int32 in types_for_column:
+                column_types[col_name] = pl.Int64  # Promote to Int64
+            elif pl.Boolean in types_for_column:
+                column_types[col_name] = pl.Boolean
+            else:
+                # Use the first type found as default
+                column_types[col_name] = types_for_column[0]
+        
+        # Align each LazyFrame to the common schema
+        aligned_frames = []
+        for lf in lazy_frames:
+            current_schema = lf.collect_schema()
+            
+            # Add missing columns as nulls and cast existing columns
+            select_expressions = []
+            for col_name in sorted(all_columns):  # Sort for consistent column order
+                target_type = column_types[col_name]
+                
+                if col_name in current_schema:
+                    # Cast existing column to target type
+                    select_expressions.append(pl.col(col_name).cast(target_type))
+                else:
+                    # Add missing column as null with correct type
+                    select_expressions.append(pl.lit(None, dtype=target_type).alias(col_name))
+            
+            aligned_lf = lf.select(select_expressions)
+            aligned_frames.append(aligned_lf)
+        
+        # Now all frames have the same schema - concatenate them
+        return pl.concat(aligned_frames, how="vertical")
     
     @property
     def lazy_frame(self) -> pl.LazyFrame:
