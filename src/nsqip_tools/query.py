@@ -188,7 +188,8 @@ class NSQIPQuery:
             self._lazy_frame = self._lazy_frame.filter(expr)
         else:
             # Fall back to checking individual CPT columns
-            cpt_columns = [col for col in self._lazy_frame.columns if col.startswith("CPT")]
+            schema_names = self._lazy_frame.collect_schema().names()
+            cpt_columns = [col for col in schema_names if col.startswith("CPT")]
             
             if not cpt_columns:
                 raise ValueError("No CPT columns found in the dataset")
