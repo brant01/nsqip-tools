@@ -112,7 +112,7 @@ def read_clean_csv(file_path: Path) -> pl.DataFrame:
             file_path,
             separator="\t",
             encoding="utf8-lossy",
-            null_values=["", "NULL", "NA", "-99"],
+            null_values=["", "NULL", "NA", "-99", " ", "  ", "   ", "    ", "     "],
             infer_schema_length=0,  # Don't infer, treat all as string
         )
     except Exception as e:
@@ -142,7 +142,7 @@ def get_all_columns(file_paths: List[Path]) -> List[str]:
             file,
             separator="\t",
             encoding="utf8-lossy",
-            null_values=["", "NULL", "NA", "-99"],
+            null_values=["", "NULL", "NA", "-99", " ", "  ", "   ", "    ", "     "],
             infer_schema_length=0,  # Don't infer types
         )
         schema = df.collect_schema()
