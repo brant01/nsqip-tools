@@ -17,7 +17,15 @@ __all__ = [
     "get_recommended_memory_limit",
 ]
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version
+    __version__ = version("nsqip-tools")
+except ImportError:
+    # Fallback for Python < 3.8
+    from importlib_metadata import version
+    __version__ = version("nsqip-tools")
+except Exception:
+    __version__ = "unknown"
 
 
 
