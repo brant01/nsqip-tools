@@ -39,6 +39,10 @@ dev = [
 
 [dependency-groups]
 dev = [
+    "marimo>=0.14.13",
+    "matplotlib>=3.10.3",
     "pytest>=8.3.5",
+    "scikit-learn>=1.7.1",
+    "seaborn>=0.13.2",
     "setuptools>=80.9.0",
 ]
