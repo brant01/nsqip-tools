@@ -30,10 +30,13 @@ def pytest_configure(config):
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
     config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
+        "markers", "integration: marks tests as integration tests requiring real data"
     )
     config.addinivalue_line(
         "markers", "unit: marks tests as unit tests"
+    )
+    config.addinivalue_line(
+        "markers", "requires_data: marks tests that require actual dataset files"
     )
 
 
@@ -44,6 +47,14 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "slow" in item.keywords:
                 item.add_marker(skip_slow)
+    
+    # Skip data-dependent tests if data directory doesn't exist
+    dataset_dir = Path(config.getoption("--dataset-dir"))
+    if not dataset_dir.exists():
+        skip_data = pytest.mark.skip(reason=f"dataset directory {dataset_dir} not found")
+        for item in items:
+            if "requires_data" in item.keywords or "integration" in item.keywords:
+                item.add_marker(skip_data)
 
 
 @pytest.fixture(scope="session")

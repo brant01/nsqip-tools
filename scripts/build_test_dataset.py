@@ -7,7 +7,14 @@ import shutil
 
 def main():
     # Source data directory
-    source_dir = Path.home() / "r_drive" / "Jason" / "NSQIP" / "2025_Download" / "data"
+    # Get data directory from environment variable or use default
+    import os
+    source_dir = Path(os.getenv('NSQIP_DATA_DIR', Path.home() / "nsqip_data"))
+    
+    if not source_dir.exists():
+        print(f"Error: NSQIP data directory not found: {source_dir}")
+        print("Please set NSQIP_DATA_DIR environment variable or create .env file")
+        return
     
     # Create test directory with just 2022 data
     test_dir = Path.home() / "projects" / "nsqip_tools" / "test_data"

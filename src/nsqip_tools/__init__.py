@@ -8,6 +8,7 @@ and parquet datasets.
 from .query import load_data, NSQIPQuery
 from .builder import build_parquet_dataset
 from ._internal.memory_utils import get_memory_info, get_recommended_memory_limit
+from .config import get_data_directory, get_output_directory, get_memory_limit
 
 __all__ = [
     "build_parquet_dataset",
@@ -15,6 +16,9 @@ __all__ = [
     "NSQIPQuery",
     "get_memory_info",
     "get_recommended_memory_limit",
+    "get_data_directory",
+    "get_output_directory", 
+    "get_memory_limit",
 ]
 
 try:

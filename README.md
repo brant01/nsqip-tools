@@ -19,6 +19,56 @@ A Python package for working with National Surgical Quality Improvement Program 
 pip install nsqip-tools
 ```
 
+### Optional Dependencies
+
+For enhanced configuration management:
+```bash
+pip install nsqip-tools[config]
+```
+
+## Configuration
+
+### Environment Setup
+
+NSQIP Tools can be configured using environment variables for easier data path management:
+
+```bash
+# Set your NSQIP data directory
+export NSQIP_DATA_DIR="/path/to/your/nsqip/data"
+
+# Optional: Set custom output directory  
+export NSQIP_OUTPUT_DIR="/path/to/output"
+
+# Optional: Set memory limit
+export NSQIP_MEMORY_LIMIT="8GB"
+```
+
+### Using .env Files
+
+Create a `.env` file in your project directory:
+
+```bash
+# Copy the example configuration
+cp .env.example .env
+
+# Edit with your paths
+NSQIP_DATA_DIR=/path/to/your/nsqip/data
+NSQIP_OUTPUT_DIR=/path/to/output
+NSQIP_MEMORY_LIMIT=8GB
+```
+
+**Note:** Never commit `.env` files to version control as they may contain sensitive paths.
+
+### Data Access Requirements
+
+**Important:** This package does not include NSQIP data. You must obtain access to NSQIP data through official channels:
+
+- **NSQIP Participant Sites**: Contact your institution's NSQIP coordinator
+- **Research Access**: Apply through the [American College of Surgeons](https://www.facs.org/quality-programs/acs-nsqip/)
+- **Data Use Agreements**: Required for all NSQIP data usage
+
+This tool works with the standard NSQIP participant user files (PUF) in tab-delimited text format.
+
 ## Quick Start
 
 ### Building a Dataset

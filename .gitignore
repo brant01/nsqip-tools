@@ -20,9 +20,12 @@ data/
 *.xlsx
 *.xls
 
-# Environment files
+# Environment files (but keep examples)
 *.env
-.env.*
+.env
+.env.local
+.env.development
+.env.production
 
 # Logs
 logs/

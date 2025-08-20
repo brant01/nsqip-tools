@@ -48,6 +48,8 @@ def ncdb_query():
     return nsqip_tools.load_data(str(NCDB_PATH))
 
 
+@pytest.mark.integration
+@pytest.mark.requires_data
 class TestAdultNSQIP:
     """Test suite for Adult NSQIP dataset."""
     
@@ -237,6 +239,8 @@ class TestAdultNSQIP:
             "No data dictionary files found"
 
 
+@pytest.mark.integration
+@pytest.mark.requires_data
 class TestPediatricNSQIP:
     """Test suite for Pediatric NSQIP dataset."""
     
@@ -295,6 +299,8 @@ class TestPediatricNSQIP:
         assert metadata["dataset_type"] == "pediatric"
 
 
+@pytest.mark.integration
+@pytest.mark.requires_data
 class TestNCDB:
     """Test suite for NCDB dataset."""
     
@@ -331,6 +337,8 @@ class TestNCDB:
             "No data dictionary files found"
 
 
+@pytest.mark.integration
+@pytest.mark.requires_data
 class TestMemoryEfficiency:
     """Test memory-efficient operations across datasets."""
     
@@ -371,6 +379,7 @@ class TestMemoryEfficiency:
 
 
 @pytest.mark.integration
+@pytest.mark.requires_data
 class TestRealWorldQueries:
     """Test real-world query patterns."""
     
