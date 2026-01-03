@@ -48,7 +48,5 @@ Thumbs.db
 # Test files for real data (not for public release)
 test_real_data.py
 
-# Claude.ai configuration
-CLAUDE.md
-
-/claude_config
+# Claude Code local settings (not shared)
+.claude/settings.local.json
