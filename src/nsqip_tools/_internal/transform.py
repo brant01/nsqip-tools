@@ -147,12 +147,12 @@ def determine_global_schema(parquet_files: List[Path]) -> Dict[str, pl.DataType]
             test_series.cast(pl.Int64, strict=True)
             global_schema[col] = pl.Int64
             logger.debug(f"Global schema: {col} -> Int64")
-        except:
+        except Exception:
             try:
                 test_series.cast(pl.Float64, strict=True)
                 global_schema[col] = pl.Float64
                 logger.debug(f"Global schema: {col} -> Float64")
-            except:
+            except Exception:
                 # Keep as string
                 pass
     
@@ -262,13 +262,13 @@ def convert_numeric_columns(df: pl.DataFrame, global_schema: Optional[Dict[str, 
                     _ = sample.cast(pl.Int64, strict=True)
                     df = df.with_columns(pl.col(col).cast(pl.Int64))
                     logger.debug(f"Converted {col} to Int64")
-                except:
+                except Exception:
                     # Try float
                     try:
                         _ = sample.cast(pl.Float64, strict=True)
                         df = df.with_columns(pl.col(col).cast(pl.Float64))
                         logger.debug(f"Converted {col} to Float64")
-                    except:
+                    except Exception:
                         # Keep as string
                         pass
         except Exception as e:

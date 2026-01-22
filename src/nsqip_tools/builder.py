@@ -17,11 +17,6 @@ from ._internal.transform import apply_transformations
 from .data_dictionary import DataDictionaryGenerator
 from ._internal.memory_utils import get_recommended_memory_limit, get_memory_info
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 

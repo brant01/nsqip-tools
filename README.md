@@ -150,19 +150,15 @@ query = nsqip_tools.load_data("/path/to/parquet/dataset")
 All filter methods return the query object for chaining:
 
 - **`filter_by_cpt(cpt_codes)`**: Filter by CPT procedure codes
-- **`filter_by_diagnosis(diagnosis_codes)`**: Filter by ICD diagnosis codes  
+- **`filter_by_diagnosis(diagnosis_codes)`**: Filter by ICD diagnosis codes
 - **`filter_by_year(years)`**: Filter by operation years
 - **`filter_active_variables()`**: Keep only variables with data in most recent year
-- **`select_demographics()`**: Select common demographic variables
-- **`select_outcomes()`**: Select common outcome variables
 
 #### Accessing Results
 
 - **`.lazy_frame`**: Get the Polars LazyFrame for custom operations
 - **`.collect()`**: Execute query and return Polars DataFrame
-- **`.count()`**: Get count of rows without collecting full data
-- **`.sample(n)`**: Get a random sample of n rows
-- **`.describe()`**: Get summary statistics about the query
+- Any Polars LazyFrame method can be called directly on the query object
 
 ## Standard Transformations
 
