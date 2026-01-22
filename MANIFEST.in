@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include CHANGELOG.md
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.csv
+recursive-exclude * *.parquet
+recursive-exclude * *.txt
+recursive-exclude * *.xlsx
+recursive-exclude * *.pdf
+recursive-exclude docs *
+recursive-exclude scripts *
+recursive-exclude * CLAUDE.md
+recursive-exclude * claude.md

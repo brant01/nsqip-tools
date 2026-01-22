@@ -12,6 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "Jason Brant"},
 ]
+keywords = ["nsqip", "surgery", "quality", "database", "analysis", "parquet", "medical-research"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Healthcare Industry",
@@ -22,6 +23,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Operating System :: OS Independent",
 ]
 dependencies = [
     "polars>=1.0.0",
@@ -32,8 +35,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
+    "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "types-psutil>=5.9.0",
+    "types-tqdm>=4.65.0",
 ]
 config = [
     "python-dotenv>=1.0.0",
@@ -44,11 +51,28 @@ config = [
 "Bug Tracker" = "https://github.com/brant01/nsqip_tools/issues"
 "Source Code" = "https://github.com/brant01/nsqip_tools"
 
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "RUF"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+
 [dependency-groups]
 dev = [
     "marimo>=0.14.13",
     "matplotlib>=3.10.3",
     "pytest>=8.3.5",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
     "scikit-learn>=1.7.1",
     "seaborn>=0.13.2",
     "setuptools>=80.9.0",
