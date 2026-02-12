@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-01-22
+
 ### Fixed
 - Replace bare `except:` clauses with `except Exception:` for proper error handling
 - Remove `logging.basicConfig()` from module import to avoid overriding user config
 
 ### Added
 - `py.typed` marker for PEP 561 type hint support
+- Project documentation (CLAUDE.md, CONTRIBUTING.md)
+- Cross-platform path configuration in `.env.example`
 
 ## [0.2.3] - 2025-01-03
 
