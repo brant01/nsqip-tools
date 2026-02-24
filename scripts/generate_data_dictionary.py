@@ -8,7 +8,9 @@ from an existing NSQIP parquet dataset.
 import argparse
 import sys
 from pathlib import Path
+
 from nsqip_tools.data_dictionary import generate_data_dictionary
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -36,18 +38,18 @@ def main():
         default=10,
         help="Number of columns to process at once (default: 10, use 1 to disable batching)"
     )
-    
+
     args = parser.parse_args()
-    
+
     if not args.parquet_dir.exists():
         print(f"Error: Parquet directory does not exist: {args.parquet_dir}")
         sys.exit(1)
-    
+
     print(f"Generating data dictionary for: {args.parquet_dir}")
     print(f"Output format: {args.format}")
     print(f"Batch size: {args.batch_size}")
     print("-" * 50)
-    
+
     try:
         generate_data_dictionary(
             parquet_dir=args.parquet_dir,
@@ -56,7 +58,7 @@ def main():
             batch_size=args.batch_size
         )
         print("\nData dictionary generation complete!")
-        
+
     except Exception as e:
         print(f"\nGeneration failed: {e}")
         import traceback

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-02-23
+
+### Added
+- New `analysis` module with 12 functions promoted from clinical-db-analysis:
+  - `detect_dataset_type()` - auto-detect adult vs pediatric datasets
+  - `calculate_composite_ssi()` - ANY_SSI binary indicator
+  - `calculate_serious_morbidity()` - composite morbidity indicator
+  - `create_age_groups()` - standard age categorization
+  - `clean_asa_class()` - extract numeric ASA 1-5
+  - `calculate_bmi()` - BMI from HEIGHT/WEIGHT
+  - `standardize_sex()` - normalize to M/F
+  - `get_surgery_year()` - extract year integer
+  - `filter_by_age()` - filter by age range (standalone)
+  - `filter_elective_cases()` - filter non-emergency cases
+  - `create_outcome_summary()` - summary table with rates
+  - `export_for_stats()` - export for R/Stata/SAS
+- `NSQIPQuery.filter_by_age()` - fluent age range filtering
+- `NSQIPQuery.filter_elective()` - fluent elective case filtering
+- `NSQIPQuery.columns` property - list column names from schema
+- `NSQIPQuery.count()` - row count without full collect
+- `NSQIPQuery.sample()` - random sample as DataFrame
+- `NSQIPQuery.describe()` - dict with row count, column count, path
+- `NSQIPQuery.__repr__()` - readable string representation
+
+### Changed
+- Rename internal `_lazy_frame` attribute to `_lf` (idiomatic Polars convention)
+- GitHub repo renamed from `nsqip_tools` to `nsqip-tools`
+- Migrate pytest config from `pytest.ini` to `pyproject.toml`
+- Add `UP` (pyupgrade) to ruff lint rules
+
 ## [0.3.0] - 2026-01-22
 
 ### Fixed

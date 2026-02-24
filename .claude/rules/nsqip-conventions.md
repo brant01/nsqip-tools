@@ -17,8 +17,19 @@
 
 ## Query API Pattern
 - `NSQIPQuery` returns `self` from filter methods (fluent interface)
-- Delegate unknown attributes to underlying LazyFrame
+- Delegate unknown attributes to underlying LazyFrame via `__getattr__`
+- Internal attribute is `_lf` (idiomatic Polars convention)
 - Use `collect()` only at the end of a query chain
+- Utility methods: `columns`, `count()`, `sample()`, `describe()`, `__repr__()`
+
+## Analysis Module (`analysis.py`)
+- Standalone functions that operate on DataFrames or LazyFrames
+- Use `FrameType = TypeVar('FrameType', pl.DataFrame, pl.LazyFrame)` to preserve input type
+- All functions auto-detect adult vs pediatric via `detect_dataset_type()`
+- Pediatric detection: `AGE_DAYS` column present → pediatric
+- Adult detection: `AGE_AS_INT` or `AGE` column → adult
+- Derived columns: `ANY_SSI`, `SERIOUS_MORBIDITY`, `AGE_GROUP`, `ASA_SIMPLE`, `BMI`, `SEX_STANDARD`, `SURGERY_YEAR`
+- Use `collect_schema().names()` instead of `.columns` on LazyFrames to avoid PerformanceWarning
 
 ## Testing
 - Unit tests must work without real NSQIP data

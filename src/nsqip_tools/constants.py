@@ -3,36 +3,35 @@
 This module contains variable type definitions, column names, and other
 constants used throughout the package.
 """
-from typing import Set, Dict, List
 
 # Variables that should always be treated as strings (not numeric)
 # These are non-code fields that look numeric but are actually categorical
-STRING_VARIABLES: Set[str] = {
+STRING_VARIABLES: set[str] = {
     # Identifiers
     "CASEID",
-    
+
     # Year/Date fields (categorical, not continuous)
     "OPERYR",
-    "ADMYR", 
+    "ADMYR",
     "ADMSYR",
     "ADMQTR",
     "PUFYEAR",
     "YRDEATH",
     "HDISDT",
-    
+
     # Training year (categorical levels)
     "PGY",
 }
 
 # CPT code columns - these are procedure codes that must remain strings
-CPT_COLUMNS: List[str] = [
+CPT_COLUMNS: list[str] = [
     "CPT",
     *[f"CONCPT{i}" for i in range(1, 11)],  # CONCPT1 through CONCPT10
     *[f"OTHERCPT{i}" for i in range(1, 11)],  # OTHERCPT1 through OTHERCPT10
 ]
 
 # Diagnosis code columns - these are ICD codes that must remain strings
-DIAGNOSIS_COLUMNS: List[str] = [
+DIAGNOSIS_COLUMNS: list[str] = [
     "PODIAG",  # Post-operative diagnosis
     "PODIAG10",  # ICD-10 post-op diagnosis
     "READMUNRELICD93",  # ICD-9 readmission diagnosis
@@ -47,14 +46,14 @@ DIAGNOSIS_COLUMNS: List[str] = [
 
 # All columns that should never be converted to numeric
 # This is the union of all the above categories
-NEVER_NUMERIC: Set[str] = (
-    STRING_VARIABLES | 
-    set(CPT_COLUMNS) | 
+NEVER_NUMERIC: set[str] = (
+    STRING_VARIABLES |
+    set(CPT_COLUMNS) |
     set(DIAGNOSIS_COLUMNS)
 )
 
 # Columns that contain comma-separated values
-COMMA_SEPARATED_COLUMNS: Set[str] = {
+COMMA_SEPARATED_COLUMNS: set[str] = {
     "ANESTHES_OTHER",
     "IMMUNO_CAT",
     "OP_APPROACH",
@@ -75,14 +74,14 @@ RACE_COMBINED_FIELD: str = "RACE_COMBINED"
 DATASET_NAME_TEMPLATE: str = "{dataset_type}_nsqip_parquet"
 
 # Supported dataset types
-DATASET_TYPES: Set[str] = {"adult", "pediatric"}
+DATASET_TYPES: set[str] = {"adult", "pediatric"}
 
 # Array column names created during transformation
 ALL_CPT_CODES_FIELD: str = "ALL_CPT_CODES"
 ALL_DIAGNOSIS_CODES_FIELD: str = "ALL_DIAGNOSIS_CODES"
 
 # Expected case counts by year for data verification
-EXPECTED_CASE_COUNTS: Dict[str, Dict[str, int]] = {
+EXPECTED_CASE_COUNTS: dict[str, dict[str, int]] = {
     "adult": {
         "2005": 152490,  # Combined 2005/2006
         "2006": 152490,  # Combined 2005/2006

@@ -1,14 +1,14 @@
-from pathlib import Path
-from typing import Optional, List
-import logging
-import polars as pl
-from datetime import datetime
 import json
+import logging
+from datetime import datetime
+from pathlib import Path
+
+import polars as pl
 
 
 def create_parquet_from_text(
     text_file_dir: Path,
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
     dataset_type: str = "adult",
 ) -> Path:
     """
@@ -23,15 +23,15 @@ def create_parquet_from_text(
         Path to the parquet directory
     """
     logging.info("Starting parquet creation process.")
-    
+
     if not text_file_dir.exists():
         raise FileNotFoundError(f"Data directory not found: {text_file_dir}")
-    
+
     txt_files = sorted(text_file_dir.glob("*.txt"))
     if not txt_files:
         logging.warning(f"No .txt files found in {text_file_dir}")
         raise ValueError(f"No .txt files found in {text_file_dir}")
-    
+
     # Use provided output directory or default to text file directory
     if output_dir is None:
         # Create parquet subdirectory in text file directory
@@ -39,42 +39,42 @@ def create_parquet_from_text(
     else:
         # Use the provided output directory directly (already named appropriately)
         parquet_dir = output_dir
-    
+
     parquet_dir.mkdir(exist_ok=True)
-    
+
     logging.info(f"Dataset type: {dataset_type}")
     logging.info(f"Found {len(txt_files)} files to process in {text_file_dir}")
     logging.info(f"Output parquet directory: {parquet_dir}")
-    
+
     # Get all columns from all files first
     all_columns = get_all_columns(txt_files)
     logging.info(f"Unified column set has {len(all_columns)} columns.")
-    
+
     # Process each file
     successful_files = []
     for i, file_path in enumerate(txt_files):
         logging.info(f"[{i+1}/{len(txt_files)}] Processing {file_path.name}")
-        
+
         try:
             df = read_clean_csv(file_path)
             df = align_df_to_schema(df, all_columns)
-            
+
             # Write to parquet with year suffix if OPERYR exists
             if "OPERYR" in df.columns:
                 year = df["OPERYR"].unique()[0]
                 parquet_path = parquet_dir / f"{dataset_type}_{year}.parquet"
             else:
                 parquet_path = parquet_dir / f"{file_path.stem}.parquet"
-            
+
             df.write_parquet(parquet_path)
             successful_files.append(parquet_path.name)
-            
+
             logging.info(f"Wrote {df.shape[0]} rows to {parquet_path.name}")
-            
+
         except Exception as e:
             logging.error(f"Error processing file {file_path.name}: {e}")
             continue
-    
+
     # Create metadata file
     metadata = {
         "format": "parquet",
@@ -85,14 +85,14 @@ def create_parquet_from_text(
         "total_files": len(successful_files),
         "source_directory": str(text_file_dir),
     }
-    
+
     metadata_path = parquet_dir / "metadata.json"
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
-    
+
     logging.info(f"Created metadata file: {metadata_path}")
     logging.info(f"Parquet dataset complete. Processed {len(successful_files)} files.")
-    
+
     return parquet_dir
 
 
@@ -124,7 +124,7 @@ def read_clean_csv(file_path: Path) -> pl.DataFrame:
     return df
 
 
-def get_all_columns(file_paths: List[Path]) -> List[str]:
+def get_all_columns(file_paths: list[Path]) -> list[str]:
     """
     Scans all files and returns the union of all column names (uppercased).
 
@@ -153,7 +153,7 @@ def get_all_columns(file_paths: List[Path]) -> List[str]:
 
 def align_df_to_schema(
     df: pl.DataFrame,
-    all_columns: List[str],
+    all_columns: list[str],
 ) -> pl.DataFrame:
     """
     Aligns a DataFrame to match the master schema by adding missing columns.
@@ -167,17 +167,17 @@ def align_df_to_schema(
     """
     # Get current columns (already uppercase)
     current_cols = set(df.columns)
-    
+
     # Find missing columns
     missing_cols = [col for col in all_columns if col not in current_cols]
-    
+
     # Add missing columns as null strings (not null dtype)
     if missing_cols:
         df = df.with_columns([
             pl.lit(None).cast(pl.Utf8).alias(col) for col in missing_cols
         ])
-    
+
     # Reorder to match schema
     df = df.select(all_columns)
-    
+
     return df

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -1115,13 +1115,14 @@ wheels = [
 
 [[package]]
 name = "nsqip-tools"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "polars" },
     { name = "psutil" },
     { name = "pyarrow" },
     { name = "tqdm" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -1164,6 +1165,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "types-psutil", marker = "extra == 'dev'", specifier = ">=5.9.0" },
     { name = "types-tqdm", marker = "extra == 'dev'", specifier = ">=4.65.0" },
+    { name = "typing-extensions", specifier = ">=4.0.0" },
 ]
 provides-extras = ["dev", "config"]
 

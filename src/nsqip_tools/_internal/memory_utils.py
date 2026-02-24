@@ -1,7 +1,7 @@
 """Memory utilities for optimizing data processing performance."""
 import platform
+
 import psutil
-from typing import Optional
 
 
 def get_available_memory() -> int:
@@ -53,10 +53,10 @@ def get_recommended_memory_limit(conservative: bool = True) -> str:
     """
     total_memory = get_total_memory()
     available_memory = get_available_memory()
-    
+
     # Use the lesser of total or available memory as base
     base_memory = min(total_memory, available_memory)
-    
+
     if conservative:
         # Use 50% of available memory or 60% of total, whichever is less
         # This is more appropriate for data processing tasks
@@ -70,16 +70,16 @@ def get_recommended_memory_limit(conservative: bool = True) -> str:
             int(available_memory * 0.7),
             int(total_memory * 0.8)
         )
-    
+
     # Set minimum and maximum bounds
     min_memory = 1 * 1024 * 1024 * 1024  # 1GB minimum
     max_memory = 32 * 1024 * 1024 * 1024  # 32GB maximum (reasonable for most systems)
-    
+
     recommended = max(min_memory, min(recommended, max_memory))
-    
+
     # Round to nearest GB for cleaner settings
     recommended_gb = max(1, round(recommended / (1024 * 1024 * 1024)))
-    
+
     return f"{recommended_gb}GB"
 
 
@@ -95,7 +95,7 @@ def get_memory_info() -> dict:
         - recommended_limit: Recommended DuckDB memory limit
     """
     mem = psutil.virtual_memory()
-    
+
     return {
         "total": format_bytes(mem.total),
         "available": format_bytes(mem.available),

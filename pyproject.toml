@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nsqip-tools"
-version = "0.3.0"
+version = "0.4.0"
 description = "Tools for working with NSQIP surgical quality data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,6 +31,7 @@ dependencies = [
     "pyarrow>=15.0.0",
     "psutil>=5.9.0",
     "tqdm>=4.67.1",
+    "typing-extensions>=4.0.0",
 ]
 
 [project.optional-dependencies]
@@ -47,16 +48,16 @@ config = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/brant01/nsqip_tools"
-"Bug Tracker" = "https://github.com/brant01/nsqip_tools/issues"
-"Source Code" = "https://github.com/brant01/nsqip_tools"
+"Homepage" = "https://github.com/brant01/nsqip-tools"
+"Bug Tracker" = "https://github.com/brant01/nsqip-tools/issues"
+"Source Code" = "https://github.com/brant01/nsqip-tools"
 
 [tool.ruff]
 line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "RUF"]
+select = ["E", "F", "I", "N", "UP", "W", "RUF"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -64,6 +65,24 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 no_implicit_optional = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --strict-markers --tb=short --color=yes"
+markers = [
+    "integration: Integration tests that use real datasets (skipped if data not available)",
+    "slow: Tests that take a long time to run",
+    "unit: Unit tests that use mock/synthetic data",
+    "requires_data: Tests that require actual dataset files",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
 
 [dependency-groups]
 dev = [

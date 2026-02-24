@@ -1,4 +1,4 @@
-# nsqip_tools
+# nsqip-tools
 
 Python package for working with NSQIP (National Surgical Quality Improvement Program) data.
 
@@ -12,6 +12,7 @@ Python package for working with NSQIP (National Surgical Quality Improvement Pro
 ```
 src/nsqip_tools/
 ├── __init__.py          # Public API exports
+├── analysis.py          # Analysis functions (SSI, morbidity, age groups, BMI, etc.)
 ├── builder.py           # build_parquet_dataset() - ETL orchestration
 ├── query.py             # NSQIPQuery class - fluent query API
 ├── config.py            # Environment variable management
@@ -50,6 +51,13 @@ uv build
 - `STRING_VARIABLES` in `constants.py` - columns that must stay as strings (codes, IDs)
 - `CPT_COLUMNS`, `DIAGNOSIS_COLUMNS` - clinical code columns
 - Derived: `AGE_AS_INT`, `AGE_IS_90_PLUS`, `ALL_CPT_CODES`, `ALL_DIAGNOSIS_CODES`
+
+### Analysis Module
+- Functions in `analysis.py` operate on DataFrames or LazyFrames
+- Use `FrameType = TypeVar('FrameType', pl.DataFrame, pl.LazyFrame)` to preserve input type
+- All functions auto-detect adult vs pediatric datasets
+- `create_outcome_summary()` requires a DataFrame (not LazyFrame)
+- `export_for_stats()` writes CSV and Parquet files for statistical software
 
 ### Environment Configuration
 ```bash

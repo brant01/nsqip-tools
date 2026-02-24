@@ -1,11 +1,11 @@
+import logging
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Union, Optional
-import sys
-import logging
 
 import duckdb
 import polars as pl
+
 
 def _setup_inspection_logging(log_dir: Path = Path("logs")) -> Path:
     """
@@ -63,7 +63,7 @@ def _get_column_from_db(db_file: Path, column_name: str, table_name: str) -> pl.
         arrow_table = con.execute(query).fetch_arrow_table()
     return pl.from_arrow(arrow_table)
 
-def _generate_column_list(db_file: Path, table_name: Optional[str] = None) -> list[str]:
+def _generate_column_list(db_file: Path, table_name: str | None = None) -> list[str]:
     """
     Generate a list of all columns except OPERYR in the DuckDB table.
 
@@ -121,8 +121,8 @@ def _column_summary(db_file: Path, column_name: str, table_name: str) -> None:
     logging.info("=" * 60 + "\n")
 
 def summarize_all_columns(
-    db_file: Union[str, Path], 
-    table_name: Optional[str] = None,
+    db_file: str | Path,
+    table_name: str | None = None,
     log_dir: Path = Path("logs")
 ) -> None:
     """

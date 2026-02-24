@@ -2,10 +2,9 @@
 
 import os
 from pathlib import Path
-from typing import Optional
 
 
-def get_data_directory() -> Optional[Path]:
+def get_data_directory() -> Path | None:
     """Get the NSQIP data directory from environment variables.
     
     Returns:
@@ -17,7 +16,7 @@ def get_data_directory() -> Optional[Path]:
     data_dir = os.getenv('NSQIP_DATA_DIR')
     if data_dir:
         return Path(data_dir)
-    
+
     # Check for .env file in current directory
     env_file = Path('.env')
     if env_file.exists():
@@ -29,11 +28,11 @@ def get_data_directory() -> Optional[Path]:
                 return Path(data_dir)
         except ImportError:
             pass  # python-dotenv not installed, continue without it
-    
+
     return None
 
 
-def get_output_directory() -> Optional[Path]:
+def get_output_directory() -> Path | None:
     """Get the output directory from environment variables."""
     output_dir = os.getenv('NSQIP_OUTPUT_DIR')
     return Path(output_dir) if output_dir else None
@@ -55,17 +54,17 @@ def validate_data_directory(data_dir: Path) -> bool:
     """
     if not data_dir.exists():
         return False
-    
+
     # Look for typical NSQIP file patterns
     txt_files = list(data_dir.glob('*.txt'))
     if not txt_files:
         return False
-    
+
     # Check for NSQIP-like filenames
     nsqip_patterns = ['nsqip', 'acs', 'adult', 'pediatric', 'peds']
     has_nsqip_file = any(
         any(pattern in f.name.lower() for pattern in nsqip_patterns)
         for f in txt_files
     )
-    
+
     return has_nsqip_file
